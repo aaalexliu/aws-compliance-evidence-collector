@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Workflow Designer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif;
+            background: linear-gradient(135deg, #1e3a8a 0%, #1e293b 100%);
+            color: #1f2937;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            padding: 20px;
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .back-button {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 12px;
+            font-weight: 500;
+            transition: all 0.2s;
+            box-shadow: 0 2px 8px rgba(59,130,246,0.3);
+        }
+
+        .back-button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59,130,246,0.4);
+        }
+
+        .main-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            gap: 20px;
+            overflow-y: auto;
+        }
+
+        .section {
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 2rem;
+            border: 1px solid rgba(255,255,255,0.3);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+
+        .section h2 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 1rem;
+        }
+
+        .upload-section {
+            text-align: center;
+        }
+
+        .file-upload-area {
+            border: 2px dashed rgba(59,130,246,0.3);
+            border-radius: 12px;
+            padding: 3rem;
+            margin: 1rem 0;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: rgba(255,255,255,0.5);
+        }
+
+        .file-upload-area:hover {
+            border-color: #3b82f6;
+            background: rgba(255,255,255,0.8);
+        }
+
+        .file-upload-area.dragover {
+            border-color: #10b981;
+            background: rgba(16, 185, 129, 0.1);
+        }
+
+        #documentUpload {
+            display: none;
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            color: #6b7280;
+        }
+
+        button {
+            background: #f9fafb;
+            color: #111827;
+            border: 2px solid #e5e7eb;
+            padding: 14px;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            width: 100%;
+        }
+
+        select:focus, button:focus {
+            outline: none;
+            border-color: #3b82f6;
+            background: white;
+        }
+
+        button {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            border: none;
+            font-weight: 500;
+            color: white;
+            box-shadow: 0 2px 8px rgba(59,130,246,0.3);
+        }
+
+        button:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59,130,246,0.4);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            background: #6b7280 !important;
+            color: #9ca3af !important;
+        }
+
+        .progress-section {
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: rgba(255,255,255,0.3);
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 1rem 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #1d4ed8);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .results-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .workflow-preview {
+            background: rgba(0,0,0,0.05);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1rem 0;
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            flex: 1;
+            overflow-y: auto;
+            color: #1f2937;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-top: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .action-buttons button {
+            width: auto;
+            min-width: 140px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 12px 20px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .action-buttons button:nth-child(1) {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+        }
+
+        .action-buttons button:nth-child(2) {
+            background: linear-gradient(135deg, #10b981, #059669);
+        }
+
+        .action-buttons button:nth-child(3) {
+            background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+        }
+
+        .file-info {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+            display: none;
+            text-align: left;
+            color: #1f2937;
+        }
+
+        .error-message {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+            display: none;
+            color: #dc2626;
+        }
+
+        .upload-section p {
+            color: #6b7280;
+            margin-bottom: 0.5rem;
+            font-size: 14px;
+        }
+
+        .upload-section p:last-child {
+            font-size: 12px;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="landing.html" class="back-button">
+            ←
+        </a>
+        <h1>AI Workflow Designer</h1>
+    </div>
+
+    <div class="main-container">
+        <div class="section upload-section">
+            <h2>Upload Compliance Document</h2>
+            <p>Upload a PDF, Word document, or text file containing compliance procedures</p>
+            
+            <div class="file-upload-area" id="fileUploadArea">
+                <div class="upload-icon">📄</div>
+                <p><strong>Click to upload</strong> or drag and drop your document here</p>
+                <p>Supported formats: TXT (Max 10MB)</p>
+            </div>
+            
+            <input type="file" id="documentUpload" accept=".txt" />
+            
+            <div class="file-info" id="fileInfo">
+                <strong>File selected:</strong> <span id="fileName"></span><br>
+                <strong>Size:</strong> <span id="fileSize"></span>
+            </div>
+            
+            <button id="generateButton" disabled>
+                Generate Workflow
+            </button>
+            
+            <div class="error-message" id="errorMessage"></div>
+        </div>
+        
+        <div class="section progress-section" id="progressSection" style="display:none">
+            <h2>🤖 AI is analyzing your document...</h2>
+            <p>This may take a few moments depending on document complexity</p>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <p id="progressText">Uploading document to S3...</p>
+        </div>
+        
+        <div class="section results-section" id="resultsSection" style="display:none">
+            <h2>Generated Workflow</h2>
+            <p>Review the AI-generated workflow steps below:</p>
+            
+            <div class="workflow-preview" id="workflowOutput"></div>
+            
+            <div class="action-buttons">
+                <button id="editWorkflowBtn">
+                    ✏️ Edit Workflow
+                </button>
+                <button id="saveWorkflowBtn">
+                    💾 Save Workflow
+                </button>
+                <button id="testWorkflowBtn">
+                    🚀 Test Workflow
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../core/aws-sdk-s3.js"></script>
+    <script src="../core/tools.js"></script>
+    <script src="../core/workflow-manager.js"></script>
+    <script src="sidepanel.js"></script>
+    <script src="../core/nova-pro-agent.js"></script>
+    <script src="workflow-designer.js"></script>
+</body>
+</html>

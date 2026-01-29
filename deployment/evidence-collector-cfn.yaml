@@ -1,0 +1,551 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Evidence Collector Chrome Extension - Based on Nova Sonic Infrastructure'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Environment name
+
+  UserEmail:
+    Type: String
+    Description: 'Email address for the initial user. Must be a valid email address'
+    AllowedPattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    ConstraintDescription: 'Must be a valid email address'
+
+  AdminEmail:
+    Type: String
+    Description: 'Admin email address for SES verification (for sending reports). Must be a valid email address'
+    AllowedPattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    ConstraintDescription: 'Must be a valid email address'
+
+  BucketName:
+    Type: String
+    Description: 'S3 bucket name for evidence storage'
+    Default: 'evidence-collector-bucket'
+
+Resources:
+  # ======================================== 
+  # Cognito User Pool Configuration
+  # ========================================
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UsernameAttributes: []
+      UsernameConfiguration:
+        CaseSensitive: false
+      AliasAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          RequireUppercase: true
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+        InviteMessageTemplate:
+          EmailMessage: |
+
+            ## Welcome to Evidence Collector! 🎯
+
+            Your account has been created successfully. Here are your login credentials:
+
+            **Username** → {username}
+            **Temporary Password** → {####}
+
+            *For security, you'll be prompted to create a new password when you first sign in.*
+
+            Thank you for choosing our solution!
+
+          EmailSubject: "Welcome to Evidence Collector - Your Account Details"
+      AutoVerifiedAttributes:
+        - email
+      EmailConfiguration:
+        EmailSendingAccount: COGNITO_DEFAULT
+      UserPoolAddOns:
+        AdvancedSecurityMode: ENFORCED
+      UserPoolTags:
+        auto-delete: 'no'
+
+  AppUserGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: AppUsersGroup
+      UserPoolId: !Ref CognitoUserPool
+
+  AppUser:
+    Type: AWS::Cognito::UserPoolUser
+    DependsOn: AppUserGroup
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      Username: AppUser
+      UserAttributes:
+        - Name: email
+          Value: !Ref UserEmail
+      DesiredDeliveryMediums:
+        - EMAIL
+
+  UserGroupAttachment:
+    Type: AWS::Cognito::UserPoolUserToGroupAttachment
+    DependsOn: AppUser
+    Properties:
+      GroupName: !Ref AppUserGroup
+      Username: AppUser
+      UserPoolId: !Ref CognitoUserPool
+
+  AppClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: AppClient
+      UserPoolId: !Ref CognitoUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+      SupportedIdentityProviders:
+        - COGNITO
+      CallbackURLs:
+        - http://localhost:3000
+        - https://localhost:3000
+      LogoutURLs:
+        - http://localhost:3000
+        - https://localhost:3000
+      AllowedOAuthFlows:
+        - code
+        - implicit
+      AllowedOAuthScopes:
+        - email
+        - openid
+        - profile
+      AllowedOAuthFlowsUserPoolClient: true
+      RefreshTokenValidity: 30
+      AccessTokenValidity: 24
+      IdTokenValidity: 24
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+
+  CognitoIdentityPool:
+    Type: AWS::Cognito::IdentityPool
+    Properties:
+      IdentityPoolName: evidence-collector-identity-pool
+      AllowUnauthenticatedIdentities: false
+      CognitoIdentityProviders:
+        - ClientId: !Ref AppClient
+          ProviderName: !GetAtt CognitoUserPool.ProviderName
+
+  # ========================================
+  # S3 Bucket for Evidence Storage
+  # ========================================
+  EvidenceBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    Properties:
+      BucketName: !Sub '${BucketName}-${AWS::AccountId}-${AWS::Region}'
+      AccessControl: Private
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, HEAD, PUT]
+            AllowedOrigins: ['chrome-extension://*']
+            MaxAge: 3600
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: auto-delete
+          Value: 'no'
+
+  # ========================================
+  # IAM Policies and Roles
+  # ========================================
+  CognitoAuthenticatedPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - bedrock:InvokeModel
+              - bedrock:InvokeModelWithResponseStream
+            Resource:
+              - !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.nova-pro-v1:0'
+          - Effect: Allow
+            Action:
+              - ses:SendEmail
+              - ses:SendRawEmail
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+              - s3:DeleteObject
+            Resource:
+              - !Sub 'arn:aws:s3:::${EvidenceBucket}/evidence/*'
+              - !Sub 'arn:aws:s3:::${EvidenceBucket}/workflow-documents/*'
+              - !Sub 'arn:aws:s3:::${EvidenceBucket}/config/prompts/*'
+              - !Sub 'arn:aws:s3:::${EvidenceBucket}/config/workflows/*'
+              - !Sub 'arn:aws:s3:::${EvidenceBucket}/chat-logs/*'
+              - !Sub 'arn:aws:s3:::${EvidenceBucket}/reports/*'
+          - Effect: Allow
+            Action:
+              - s3:ListBucket
+            Resource:
+              - !Sub 'arn:aws:s3:::${EvidenceBucket}'
+            Condition:
+              StringLike:
+                's3:prefix':
+                  - 'evidence/*'
+                  - 'workflow-documents/*'
+                  - 'config/prompts/*'
+                  - 'config/workflows/*'
+                  - 'chat-logs/*'
+                  - 'reports/*'
+
+  AuthenticatedRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: cognito-identity.amazonaws.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                'cognito-identity.amazonaws.com:aud': !Ref CognitoIdentityPool
+              'ForAnyValue:StringLike':
+                'cognito-identity.amazonaws.com:amr': authenticated
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonCognitoPowerUser
+        - !Ref CognitoAuthenticatedPolicy
+      Tags:
+        - Key: auto-delete
+          Value: 'no'
+
+  DefaultAuthenticatedRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: cognito-identity.amazonaws.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                'cognito-identity.amazonaws.com:aud': !Ref CognitoIdentityPool
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonCognitoPowerUser
+      Tags:
+        - Key: auto-delete
+          Value: 'no'
+
+  CognitoIdentityPoolRoleAttachment:
+    Type: AWS::Cognito::IdentityPoolRoleAttachment
+    DependsOn:
+      - AuthenticatedRole
+      - DefaultAuthenticatedRole
+    Properties:
+      IdentityPoolId: !Ref CognitoIdentityPool
+      Roles:
+        authenticated: !GetAtt DefaultAuthenticatedRole.Arn
+      RoleMappings:
+        cognitoidp:
+          Type: Rules
+          AmbiguousRoleResolution: AuthenticatedRole
+          IdentityProvider: !Join
+            - ""
+            - - "cognito-idp."
+              - !Ref "AWS::Region"
+              - ".amazonaws.com/"
+              - !Ref CognitoUserPool
+              - ":"
+              - !Ref AppClient
+          RulesConfiguration:
+            Rules:
+              - Claim: "cognito:groups"
+                MatchType: Contains
+                Value: AppUsersGroup
+                RoleARN: !GetAtt AuthenticatedRole.Arn
+
+  # ========================================
+  # Lambda Function to Upload Prompts to S3
+  # ========================================
+  PromptUploaderRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: S3PromptUpload
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource:
+                  - !Sub 'arn:aws:s3:::${EvidenceBucket}/config/prompts/*'
+                  - !Sub 'arn:aws:s3:::${EvidenceBucket}/evidence/*'
+                  - !Sub 'arn:aws:s3:::${EvidenceBucket}/workflow-documents/*'
+                  - !Sub 'arn:aws:s3:::${EvidenceBucket}/config/workflows/*'
+                  - !Sub 'arn:aws:s3:::${EvidenceBucket}/chat-logs/*'
+                  - !Sub 'arn:aws:s3:::${EvidenceBucket}/reports/*'
+              - Effect: Allow
+                Action:
+                  - ses:VerifyEmailIdentity
+                  - ses:GetIdentityVerificationAttributes
+                Resource: '*'
+
+  PromptUploaderFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt PromptUploaderRole.Arn
+      Timeout: 60
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+          
+          s3 = boto3.client('s3')
+          
+          COMPLIANCE_PROMPT = """You are a compliance evidence collection assistant. You ONLY help with:
+
+          - SOX compliance questions and procedures
+          - HIPAA compliance and healthcare data protection
+          - PCI DSS compliance and payment security
+          - GDPR compliance and data privacy
+          - ISO compliance standards and procedures
+          - Evidence collection and documentation
+          - Audit trail requirements
+          - Compliance workflows and processes
+          - Screenshot and evidence capture guidance
+          - Regulatory documentation questions
+          - Risk assessment and compliance monitoring
+          - Data governance and security compliance
+
+          BROWSER AUTOMATION CAPABILITIES:
+          You can help users with browser automation for compliance evidence collection:
+          - "navigate to [website]" or "open [website]" - Navigate to websites
+          - "take screenshot" - Capture current page for evidence
+          - "click [element]" - Click on page elements
+          - "type [text]" - Type text into forms
+          - "search for [term]" - Search on current page
+
+          STRICT RULES:
+          - ONLY answer compliance, audit, regulatory, evidence, or documentation related questions
+          - ONLY perform browser automation for compliance evidence collection purposes
+          - For ANY non-compliance questions, respond: "I can only assist with compliance and evidence collection matters. Please ask about regulatory compliance, audit procedures, or evidence documentation."
+          - Do NOT provide general information, coding help, personal advice, or non-compliance topics
+          - Keep responses focused on compliance and evidence collection
+
+          When users ask for browser automation (navigate, screenshot, click, type), acknowledge the request and explain you'll help them collect compliance evidence."""
+          
+          WORKFLOW_DESIGNER_PROMPT = """You are an expert at creating browser automation workflows. Analyze this document and create EXECUTABLE workflow steps that can be run by an automation system.
+
+          DOCUMENT CONTENT:
+          {{DOCUMENT_TEXT}}
+
+          CRITICAL: Create workflows with INDIVIDUAL, EXECUTABLE steps using these EXACT action types:
+
+          ALLOWED ACTIONS:
+          - "navigate": Go to a specific URL (requires "url" field)
+          - "wait_for_user": Pause for manual user action (like login)
+          - "screenshot": Capture current page for evidence
+          - "click": Click on a page element (requires "element" field)
+          - "wait": Pause for page loading (requires "duration" field in milliseconds)
+
+          WORKFLOW STRUCTURE REQUIREMENTS:
+          1. Each step must be a separate object in the steps array
+          2. Each step must have ONE action type from the allowed list above
+          3. Navigation steps must include real URLs (github.com, etc.)
+          4. Break complex procedures into individual executable steps
+          5. Add wait_for_user steps for login/authentication
+          6. Add screenshot steps after important pages for evidence
+
+          EXAMPLE OF CORRECT FORMAT:
+          {
+            "workflows": [
+              {
+                "name": "GitHub Access Review",
+                "description": "Review GitHub developer access for SOX compliance",
+                "steps": [
+                  {
+                    "action": "navigate",
+                    "url": "https://github.com/login",
+                    "description": "Navigate to GitHub login page"
+                  },
+                  {
+                    "action": "wait_for_user", 
+                    "description": "Please log in with admin credentials, then click Continue"
+                  },
+                  {
+                    "action": "navigate",
+                    "url": "https://github.com/orgs/YOUR_ORG/teams",
+                    "description": "Navigate to organization teams page"
+                  },
+                  {
+                    "action": "screenshot",
+                    "description": "Capture teams page for evidence"
+                  }
+                ]
+              }
+            ]
+          }
+
+          Based on the document, create executable workflows with individual steps that can be automated. Use real URLs and break down complex procedures into simple, executable actions.
+
+          Return ONLY the JSON:"""
+          
+          def handler(event, context):
+              try:
+                  properties = event['ResourceProperties']
+                  bucket = properties['BucketName']
+                  request_type = event['RequestType']
+                  
+                  if request_type == 'Create' or request_type == 'Update':
+                      # Upload compliance assistant prompt
+                      s3.put_object(
+                          Bucket=bucket,
+                          Key='config/prompts/compliance-assistant-prompt.txt',
+                          Body=COMPLIANCE_PROMPT.encode('utf-8'),
+                          ContentType='text/plain'
+                      )
+                      
+                      # Upload workflow designer prompt
+                      s3.put_object(
+                          Bucket=bucket,
+                          Key='config/prompts/workflow-designer-prompt.txt',
+                          Body=WORKFLOW_DESIGNER_PROMPT.encode('utf-8'),
+                          ContentType='text/plain'
+                      )
+                      
+                      # Create folder structure with README files
+                      folders = {
+                          'evidence/README.txt': 'This folder stores screenshot evidence organized by date (YYYY/MM/DD)',
+                          'workflow-documents/README.txt': 'This folder stores user-uploaded compliance documents for workflow generation',
+                          'config/workflows/README.txt': 'This folder stores AI-generated and custom workflows',
+                          'chat-logs/README.txt': 'This folder stores chat conversation logs for audit trail',
+                          'reports/README.txt': 'This folder stores generated HTML evidence reports organized by date (YYYY/MM/DD)'
+                      }
+                      
+                      for key, content in folders.items():
+                          s3.put_object(
+                              Bucket=bucket,
+                              Key=key,
+                              Body=content.encode('utf-8'),
+                              ContentType='text/plain'
+                          )
+                      
+                      # Send SES verification email
+                      admin_email = properties.get('AdminEmail')
+                      region = properties.get('Region', 'us-east-1')
+                      if admin_email:
+                          ses = boto3.client('ses', region_name=region)
+                          try:
+                              ses.verify_email_identity(EmailAddress=admin_email)
+                              print(f"SES verification email sent to {admin_email}")
+                          except Exception as ses_error:
+                              print(f"Failed to send SES verification: {ses_error}")
+                              # Don't fail the stack if SES verification fails
+                      
+                      print(f"Successfully uploaded prompts and created folder structure in {bucket}")
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                      
+                  elif request_type == 'Delete':
+                      # Clean up on stack deletion
+                      try:
+                          s3.delete_object(Bucket=bucket, Key='config/prompts/compliance-assistant-prompt.txt')
+                          s3.delete_object(Bucket=bucket, Key='config/prompts/workflow-designer-prompt.txt')
+                          # Note: README files will be deleted when bucket is deleted
+                      except:
+                          pass
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                      
+              except Exception as e:
+                  print(f"Error: {str(e)}")
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {'Error': str(e)})
+
+  PromptUploader:
+    Type: Custom::PromptUploader
+    DependsOn: EvidenceBucket
+    Properties:
+      ServiceToken: !GetAtt PromptUploaderFunction.Arn
+      BucketName: !Ref EvidenceBucket
+      AdminEmail: !Ref AdminEmail
+      Region: !Ref AWS::Region
+      Version: "1.1"  # Increment to force update
+
+Outputs:
+  # Cognito Outputs
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref CognitoUserPool
+    Export:
+      Name: !Sub "${AWS::StackName}-UserPoolId"
+
+  UserPoolClientId:
+    Description: Cognito User Pool Client ID
+    Value: !Ref AppClient
+    Export:
+      Name: !Sub "${AWS::StackName}-UserPoolClientId"
+
+  IdentityPoolId:
+    Description: Cognito Identity Pool ID
+    Value: !Ref CognitoIdentityPool
+    Export:
+      Name: !Sub "${AWS::StackName}-IdentityPoolId"
+
+  # User Information
+  CreatedUsername:
+    Description: Created Cognito username
+    Value: AppUser
+
+  # Storage Outputs
+  EvidenceBucketName:
+    Description: S3 Bucket for Evidence Storage
+    Value: !Ref EvidenceBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-EvidenceBucket"
+
+  Region:
+    Description: AWS Region
+    Value: !Ref AWS::Region
+
+  SetupInstructions:
+    Description: Next Steps
+    Value: 'Check email for temporary password, configure Chrome extension with output values, login with AppUser'

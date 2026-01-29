@@ -1,0 +1,37 @@
+{
+  "workflows": [
+    {
+      "name": "GitHub SOX Audit",
+      "description": "Standard GitHub compliance evidence collection with login",
+      "steps": [
+        {
+          "action": "navigate",
+          "url": "https://github.com/login",
+          "description": "Navigate to GitHub login page"
+        },
+        {
+          "action": "wait_for_user",
+          "description": "Please log into GitHub, then click Continue"
+        },
+        {
+          "action": "navigate", 
+          "url": "https://github.com/settings/organizations",
+          "description": "Navigate to organization page"
+        },
+        {
+          "action": "screenshot",
+          "description": "Take screenshot of organization page"
+        },
+        {
+          "action": "click",
+          "element": "aws-samples",
+          "description": "Click on aws-samples organization"
+        },
+        {
+          "action": "screenshot",
+          "description": "Take screenshot of repositories"
+        }
+      ]
+    }
+  ]
+}

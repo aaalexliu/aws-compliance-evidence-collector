@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "Evidence Collection Suite",
+  "version": "1.0",
+  "description": "AI-powered compliance evidence collection with automated workflow generation",
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "storage",
+    "sidePanel",
+    "tabCapture",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>",
+    "https://cognito-idp.us-east-1.amazonaws.com/*",
+    "https://cognito-idp.us-west-2.amazonaws.com/*",
+    "https://cognito-idp.eu-west-1.amazonaws.com/*",
+    "https://cognito-identity.us-east-1.amazonaws.com/*",
+    "https://cognito-identity.us-west-2.amazonaws.com/*",
+    "https://cognito-identity.eu-west-1.amazonaws.com/*",
+    "https://bedrock-runtime.us-east-1.amazonaws.com/*",
+    "https://bedrock-runtime.us-west-2.amazonaws.com/*",
+    "https://*.s3.amazonaws.com/*",
+    "https://*.s3.us-east-1.amazonaws.com/*",
+    "https://*.s3.us-west-2.amazonaws.com/*"
+  ],
+  "action": {
+    "default_title": "Evidence Collection"
+  },
+  "side_panel": {
+    "default_path": "ui/auth.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["core/content.js"]
+    }
+  ],
+  "background": {
+    "service_worker": "core/background.js"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "config/workflow-config.json", 
+        "ui/landing.html",
+        "ui/workflow-designer.html"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
