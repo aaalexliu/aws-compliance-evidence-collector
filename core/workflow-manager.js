@@ -173,10 +173,23 @@ class WorkflowManager {
             await toolsManager.executeTool('NavigateToURL', { url: step.url });
             // Wait for page to fully load after navigation
             await this.waitForPageLoad();
+            // Additional wait for dynamic content (especially for sites like GitHub)
+            await new Promise(resolve => setTimeout(resolve, 2000));
             break;
           case 'screenshot':
             // Ensure page is fully loaded before screenshot
             await this.waitForPageLoad();
+            
+            // Additional validation - check if tab is accessible
+            try {
+              const [checkTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+              if (!checkTab || !checkTab.url || checkTab.url === '') {
+                throw new Error('Tab not accessible or URL is empty. Please ensure the page is fully loaded.');
+              }
+            } catch (tabError) {
+              throw new Error(`Cannot access tab: ${tabError.message}`);
+            }
+            
             // Pass workflow context to screenshot tool
             const screenshotResult = await toolsManager.executeTool('TakeScreenshot', {
               workflowName: workflow.name,

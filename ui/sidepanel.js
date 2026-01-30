@@ -1747,118 +1747,32 @@ RECOMMENDATIONS: [your recommendations]
     }
     
     const workflow = window.testWorkflowData.workflows[workflowIndex];
-    addMessage(`🚀 Starting test workflow: ${workflowName}`, 'user');
     
     try {
-      // Execute workflow steps directly
-      let currentStep = 0;
+      // Use WorkflowManager for consistent execution
+      const workflowManager = new window.WorkflowManager();
+      await workflowManager.loadWorkflows();
       
-      for (const step of workflow.steps) {
-        currentStep++;
-        addMessage(`Step ${currentStep}/${workflow.steps.length}: ${step.description}`, 'assistant');
-        
-        switch (step.action) {
-          case 'navigate':
-            if (step.url) {
-              addMessage(`🌐 Navigate to: ${step.url}`, 'assistant');
-              // Navigate in current tab
-              const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-              await chrome.tabs.update(tab.id, { url: step.url });
-              // Wait for page to fully load
-              await waitForPageLoad();
-              addMessage(`✅ Page loaded`, 'assistant');
-            }
-            break;
-            
-          case 'wait_for_user':
-            addMessage(`⏸️ ${step.description}`, 'assistant');
-            
-            // Create continue button
-            let continueHTML = '<div class="message assistant">';
-            continueHTML += '<div style="text-align: center; margin: 10px 0;">';
-            continueHTML += '<button id="continueWorkflowBtn" style="background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: 500;">Continue Workflow</button>';
-            continueHTML += '</div></div>';
-            
-            const chatArea = document.getElementById('chatArea');
-            if (chatArea) {
-              chatArea.innerHTML += continueHTML;
-              chatArea.scrollTop = chatArea.scrollHeight;
-              
-              // Add event listener to continue button
-              const continueBtn = document.getElementById('continueWorkflowBtn');
-              if (continueBtn) {
-                continueBtn.addEventListener('click', () => {
-                  continueBtn.remove();
-                  addMessage('✅ Continuing workflow...', 'user');
-                  // Continue execution from next step
-                  continueWorkflowExecution(workflow, currentStep);
-                });
-              }
-            }
-            return; // Stop execution, wait for user to click continue
-            
-          case 'screenshot':
-            addMessage(`📸 ${step.description}`, 'assistant');
-            // Ensure page is fully loaded before screenshot
-            await waitForPageLoad();
-            // Take screenshot of current active tab
-            try {
-              const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-              const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
-              
-              // Save screenshot
-              if (s3Manager) {
-                const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-                const result = await s3Manager.uploadScreenshot(dataUrl, tab.url, 'test-workflow');
-                addMessage(`📸 ${result.message || 'Screenshot saved'}`, 'assistant', dataUrl);
-              } else {
-                addMessage(`📸 Screenshot captured (S3 not configured)`, 'assistant', dataUrl);
-              }
-            } catch (error) {
-              addMessage(`❌ Screenshot failed: ${error.message}`, 'assistant');
-            }
-            break;
-            
-          case 'click':
-            addMessage(`👆 Click on: ${step.element}`, 'assistant');
-            // Actually execute the click
-            try {
-              const [clickTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-              const clickResponse = await chrome.tabs.sendMessage(clickTab.id, {
-                action: 'clickElement',
-                description: step.element
-              });
-              
-              if (clickResponse && clickResponse.success) {
-                addMessage(`✅ Clicked: ${clickResponse.message}`, 'assistant');
-                // Wait for page to settle after click
-                await new Promise(r => setTimeout(r, 2000)); // 2 second delay
-                await waitForPageLoad(); // Then wait for page load
-              } else {
-                addMessage(`❌ Click failed: ${clickResponse?.error || 'Element not found'}`, 'assistant');
-                // Show error recovery suggestions
-                await handleClickErrorRecovery(step.element, clickTab.id);
-              }
-            } catch (clickError) {
-              addMessage(`❌ Click error: ${clickError.message}`, 'assistant');
-            }
-            break;
-            
-          case 'wait':
-            const duration = step.duration || 2000;
-            addMessage(`⏳ Waiting ${duration}ms...`, 'assistant');
-            await new Promise(resolve => setTimeout(resolve, duration));
-            break;
-            
-          default:
-            addMessage(`❓ Unknown action: ${step.action}`, 'assistant');
-        }
-        
-        // Small delay between steps
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
+      // Temporarily add this workflow to the manager
+      await workflowManager.addWorkflow(workflow);
       
-      addMessage(`✅ Test workflow "${workflowName}" completed!`, 'assistant');
+      // Get username from session
+      const session = await chrome.storage.session.get(['username']);
+      const username = session.username || 'test-user';
+      
+      // Execute using WorkflowManager (same as automated workflows)
+      await workflowManager.executeWorkflow(
+        workflow.name,
+        window.evidenceTools,
+        (message) => {
+          if (typeof message === 'object' && message.type === 'screenshot') {
+            addMessage(message.message, 'assistant', message.screenshot);
+          } else if (typeof message === 'string') {
+            addMessage(message, 'assistant');
+          }
+        },
+        username
+      );
       
     } catch (error) {
       console.error('Test workflow execution failed:', error);

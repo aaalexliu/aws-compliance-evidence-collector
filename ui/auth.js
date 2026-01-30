@@ -76,55 +76,13 @@ class CognitoAuth {
       } else if (data.ChallengeName === 'NEW_PASSWORD_REQUIRED') {
         console.log('=== PASSWORD CHANGE REQUIRED ===');
         
-        // Prompt user for new password
-        const newPassword = prompt('Temporary password detected. Please enter a new permanent password (min 8 chars, must include uppercase, lowercase, number, symbol):');
-        
-        if (!newPassword) {
-          throw new Error('New password required to continue');
-        }
-        
-        // Respond to password challenge
-        const challengeResponse = await fetch(authUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-amz-json-1.1',
-            'X-Amz-Target': 'AWSCognitoIdentityProviderService.RespondToAuthChallenge'
-          },
-          body: JSON.stringify({
-            ChallengeName: 'NEW_PASSWORD_REQUIRED',
-            ClientId: this.cognitoConfig.clientId,
-            Session: data.Session,
-            ChallengeResponses: {
-              USERNAME: username,
-              NEW_PASSWORD: newPassword
-            }
-          })
-        });
-        
-        const challengeData = await challengeResponse.json();
-        console.log('Challenge response:', challengeData);
-        
-        if (challengeData.AuthenticationResult) {
-          const accessToken = challengeData.AuthenticationResult.AccessToken;
-          const idToken = challengeData.AuthenticationResult.IdToken;
-          
-          // Get AWS credentials using the ID token
-          const credentials = await this.getAWSCredentials(idToken);
-          
-          await chrome.storage.session.set({ 
-            accessToken: accessToken,
-            idToken: idToken,
-            credentials: credentials,
-            username: username 
-          });
-          
-          this.credentials = credentials;
-          console.log('=== PASSWORD CHANGE SUCCESS ===');
-          alert('Password changed successfully! You can now use your new password for future logins.');
-          return { success: true, credentials: credentials };
-        } else {
-          throw new Error(challengeData.message || 'Password change failed');
-        }
+        // Return password change required instead of using prompt
+        return { 
+          success: false, 
+          requiresPasswordChange: true, 
+          session: data.Session,
+          username: username 
+        };
         
       } else {
         console.log('=== AUTH FAILED - NO RESULT ===');
@@ -302,6 +260,53 @@ class CognitoAuth {
 
     return headers;
   }
+
+  async respondToPasswordChallenge(username, newPassword, session) {
+    if (!this.cognitoConfig) {
+      throw new Error('Cognito not configured');
+    }
+
+    const authUrl = `https://cognito-idp.${this.cognitoConfig.region}.amazonaws.com/`;
+    
+    const challengeResponse = await fetch(authUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-amz-json-1.1',
+        'X-Amz-Target': 'AWSCognitoIdentityProviderService.RespondToAuthChallenge'
+      },
+      body: JSON.stringify({
+        ChallengeName: 'NEW_PASSWORD_REQUIRED',
+        ClientId: this.cognitoConfig.clientId,
+        Session: session,
+        ChallengeResponses: {
+          USERNAME: username,
+          NEW_PASSWORD: newPassword
+        }
+      })
+    });
+    
+    const challengeData = await challengeResponse.json();
+    
+    if (challengeData.AuthenticationResult) {
+      const accessToken = challengeData.AuthenticationResult.AccessToken;
+      const idToken = challengeData.AuthenticationResult.IdToken;
+      
+      // Get AWS credentials using the ID token
+      const credentials = await this.getAWSCredentials(idToken);
+      
+      await chrome.storage.session.set({ 
+        accessToken: accessToken,
+        idToken: idToken,
+        credentials: credentials,
+        username: username 
+      });
+      
+      this.credentials = credentials;
+      return { success: true, credentials: credentials };
+    } else {
+      throw new Error(challengeData.message || 'Password change failed');
+    }
+  }
 }
 
 // UI Logic (same as before)
@@ -382,15 +387,80 @@ if (document.getElementById('setupLink')) {
     document.getElementById('loginError').textContent = '';
 
     try {
-      await auth.authenticate(username, password);
-      // Redirect to landing page
-      window.location.href = 'landing.html';
+      const result = await auth.authenticate(username, password);
+      
+      if (result.success) {
+        // Redirect to landing page
+        window.location.href = 'landing.html';
+      } else if (result.requiresPasswordChange) {
+        // Show password change form
+        document.getElementById('loginForm').style.display = 'none';
+        document.getElementById('passwordChangeForm').style.display = 'block';
+        
+        // Store session data for password change
+        window.passwordChangeData = {
+          username: result.username,
+          session: result.session
+        };
+      }
     } catch (error) {
-      alert(`Login failed: ${error.message}`);
       document.getElementById('loginError').textContent = error.message;
       document.getElementById('loginButton').disabled = false;
     }
   });
+
+  // Password change handler
+  if (document.getElementById('changePasswordButton')) {
+    document.getElementById('changePasswordButton').addEventListener('click', async () => {
+      const newPassword = document.getElementById('newPassword').value;
+      const confirmPassword = document.getElementById('confirmPassword').value;
+      const errorDiv = document.getElementById('passwordChangeError');
+
+      if (!newPassword || !confirmPassword) {
+        errorDiv.textContent = 'Both fields are required';
+        return;
+      }
+
+      if (newPassword !== confirmPassword) {
+        errorDiv.textContent = 'Passwords do not match';
+        return;
+      }
+
+      if (newPassword.length < 8) {
+        errorDiv.textContent = 'Password must be at least 8 characters';
+        return;
+      }
+
+      const hasUppercase = /[A-Z]/.test(newPassword);
+      const hasLowercase = /[a-z]/.test(newPassword);
+      const hasNumber = /[0-9]/.test(newPassword);
+      const hasSymbol = /[^A-Za-z0-9]/.test(newPassword);
+
+      if (!hasUppercase || !hasLowercase || !hasNumber || !hasSymbol) {
+        errorDiv.textContent = 'Password must include uppercase, lowercase, number, and symbol';
+        return;
+      }
+
+      document.getElementById('changePasswordButton').disabled = true;
+      errorDiv.textContent = '';
+
+      try {
+        const result = await auth.respondToPasswordChallenge(
+          window.passwordChangeData.username,
+          newPassword,
+          window.passwordChangeData.session
+        );
+
+        if (result.success) {
+          alert('Password changed successfully!');
+          window.location.href = 'landing.html';
+        }
+      } catch (error) {
+        errorDiv.textContent = error.message;
+        document.getElementById('changePasswordButton').disabled = false;
+      }
+    });
+  }
 
   // Enter key handlers
   document.getElementById('password').addEventListener('keypress', (e) => {

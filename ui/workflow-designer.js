@@ -329,6 +329,7 @@ function parseWorkflowFromResponse(response) {
         
         console.log('Extracted response text length:', responseText.length);
         console.log('First 1000 chars:', responseText.substring(0, 1000));
+        console.log('Last 500 chars:', responseText.substring(responseText.length - 500));
         
         // Try to extract JSON from the response
         jsonText = responseText;
@@ -351,10 +352,23 @@ function parseWorkflowFromResponse(response) {
         jsonText = jsonText.replace(/\\n/g, '\n'); // Fix escaped newlines
         jsonText = jsonText.trim();
         
-        // Try to fix common JSON issues
+        // Try to fix common JSON issues - multiple passes for better results
+        let previousText = '';
+        let attempts = 0;
+        while (previousText !== jsonText && attempts < 3) {
+            previousText = jsonText;
+            jsonText = fixCommonJSONIssues(jsonText);
+            attempts++;
+        }
+        
+        // Apply line-by-line repair
+        jsonText = repairJSON(jsonText);
+        
+        // One more pass of fixes after repair
         jsonText = fixCommonJSONIssues(jsonText);
         
-        console.log('Cleaned JSON text:', jsonText.substring(0, 500) + '...');
+        console.log('Cleaned JSON text (after ' + attempts + ' passes + repair):', jsonText.substring(0, 500) + '...');
+        console.log('Around position 4275:', jsonText.substring(4200, 4350));
         
         // Parse JSON
         const workflow = JSON.parse(jsonText);
@@ -409,31 +423,70 @@ function parseWorkflowFromResponse(response) {
 
 function fixCommonJSONIssues(jsonText) {
     try {
-        // Remove trailing commas before closing brackets/braces
+        // Step 1: Remove trailing commas before closing brackets/braces
         jsonText = jsonText.replace(/,(\s*[}\]])/g, '$1');
         
-        // Fix missing commas between array elements (objects)
-        jsonText = jsonText.replace(/}\s*\n\s*{/g, '},\n{');
-        jsonText = jsonText.replace(/}\s*{/g, '}, {');
+        // Step 2: Fix missing commas between consecutive objects in arrays
+        // Pattern: } followed by whitespace and { (most common issue)
+        jsonText = jsonText.replace(/}(\s+)\{/g, '},$1{');
         
-        // Fix missing commas between object properties
-        jsonText = jsonText.replace(/"\s*\n\s*"/g, '",\n"');
+        // Step 3: Fix missing commas after closing brace before opening brace (no whitespace)
+        jsonText = jsonText.replace(/}\{/g, '},{');
         
-        // Fix missing commas after closing braces in arrays
-        jsonText = jsonText.replace(/}(\s*\n\s*)(\{|\[)/g, '},$1$2');
+        // Step 4: Fix missing commas between object properties
+        // Pattern: "value" followed by newline and "key":
+        jsonText = jsonText.replace(/("(?:[^"\\]|\\.)*")(\s*\n\s*)("(?:[^"\\]|\\.)*"\s*:)/g, '$1,$2$3');
         
-        // Fix missing commas after closing brackets in arrays
-        jsonText = jsonText.replace(/\](\s*\n\s*)\{/g, '],$1{');
+        // Step 5: Fix missing commas after boolean/number values before next property
+        jsonText = jsonText.replace(/(true|false|\d+)(\s*\n\s*)("(?:[^"\\]|\\.)*"\s*:)/g, '$1,$2$3');
         
-        // Fix double commas
-        jsonText = jsonText.replace(/,,+/g, ',');
+        // Step 6: Fix missing commas after closing bracket before opening brace
+        jsonText = jsonText.replace(/\](\s*)\{/g, '],$1{');
         
-        // Fix comma before closing bracket/brace (again, after all fixes)
+        // Step 7: Fix missing commas after closing brace before opening bracket
+        jsonText = jsonText.replace(/}(\s*)\[/g, '},$1[');
+        
+        // Step 8: Fix missing commas after string ending with quote before next string property
+        jsonText = jsonText.replace(/"(\s*\n\s+)"/g, '",$1"');
+        
+        // Step 9: Remove any double commas created by our fixes
+        jsonText = jsonText.replace(/,(\s*),+/g, ',$1');
+        
+        // Step 10: Final cleanup - remove trailing commas again
         jsonText = jsonText.replace(/,(\s*[}\]])/g, '$1');
         
         return jsonText;
     } catch (error) {
         console.log('Error fixing JSON:', error);
+        return jsonText;
+    }
+}
+
+// More aggressive JSON repair - validates structure and adds missing commas
+function repairJSON(jsonText) {
+    try {
+        const lines = jsonText.split('\n');
+        const repairedLines = [];
+        
+        for (let i = 0; i < lines.length; i++) {
+            let line = lines[i];
+            const nextLine = i < lines.length - 1 ? lines[i + 1].trim() : '';
+            const trimmedLine = line.trim();
+            
+            // Check if current line ends with } or ] and next line starts with { or "
+            if (trimmedLine.endsWith('}') && !trimmedLine.endsWith(',') && !trimmedLine.endsWith('{')) {
+                if (nextLine.startsWith('{') || nextLine.startsWith('"')) {
+                    // Add comma before the closing brace
+                    line = line.replace(/}(\s*)$/, '},$1');
+                }
+            }
+            
+            repairedLines.push(line);
+        }
+        
+        return repairedLines.join('\n');
+    } catch (error) {
+        console.log('Error in repairJSON:', error);
         return jsonText;
     }
 }
@@ -606,25 +659,37 @@ function hideError() {
 
 function editWorkflow() {
     const output = document.getElementById('workflowOutput');
+    const actionButtons = document.querySelector('.action-buttons');
+    
+    // Check if already in edit mode
+    if (output.contentEditable === 'true') {
+        return; // Already editing, don't create duplicate button
+    }
+    
     output.contentEditable = true;
     output.style.border = '2px solid #3b82f6';
     
-    const saveEditButton = document.createElement('button');
-    saveEditButton.textContent = 'Save Edits';
-    saveEditButton.onclick = () => {
-        try {
-            generatedWorkflow = JSON.parse(output.textContent);
-            output.contentEditable = false;
-            output.style.border = 'none';
-            saveEditButton.remove();
-            showError(''); // Clear any errors
-            hideError();
-        } catch (error) {
-            showError('Invalid JSON format. Please fix the syntax.');
-        }
-    };
-    
-    document.querySelector('.action-buttons').appendChild(saveEditButton);
+    // Check if Save Edits button already exists
+    let saveEditButton = actionButtons.querySelector('.save-edit-btn');
+    if (!saveEditButton) {
+        saveEditButton = document.createElement('button');
+        saveEditButton.className = 'save-edit-btn';
+        saveEditButton.textContent = 'Save Edits';
+        saveEditButton.onclick = () => {
+            try {
+                generatedWorkflow = JSON.parse(output.textContent);
+                output.contentEditable = false;
+                output.style.border = 'none';
+                saveEditButton.remove();
+                showError(''); // Clear any errors
+                hideError();
+            } catch (error) {
+                showError('Invalid JSON format. Please fix the syntax.');
+            }
+        };
+        
+        actionButtons.appendChild(saveEditButton);
+    }
 }
 
 async function saveWorkflow() {

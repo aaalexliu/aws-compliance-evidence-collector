@@ -53,18 +53,18 @@ Resources:
         AllowAdminCreateUserOnly: true
         InviteMessageTemplate:
           EmailMessage: |
-
-            ## Welcome to Evidence Collector! 🎯
-
-            Your account has been created successfully. Here are your login credentials:
-
-            **Username** → {username}
-            **Temporary Password** → {####}
-
-            *For security, you'll be prompted to create a new password when you first sign in.*
-
-            Thank you for choosing our solution!
-
+            <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+              <h2 style="color: #1e40af;">Welcome to Evidence Collector! 🎯</h2>
+              <p>Your account has been created successfully. Here are your login credentials:</p>
+              <p style="margin-left: 20px;">
+                Username → {username}<br>
+                Temporary Password → {####}
+              </p>
+              <p><em>For security, you'll be prompted to create a new password when you first sign in.</em></p>
+              <p>Thank you for choosing our solution!</p>
+            </body>
+            </html>
           EmailSubject: "Welcome to Evidence Collector - Your Account Details"
       AutoVerifiedAttributes:
         - email
@@ -147,12 +147,43 @@ Resources:
   # ========================================
   # S3 Bucket for Evidence Storage
   # ========================================
-  EvidenceBucket:
+  # S3 Buckets
+  # ========================================
+  
+  EvidenceLoggingBucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Delete
     Properties:
+      BucketName: !Sub '${BucketName}-logs-${AWS::AccountId}-${AWS::Region}'
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerPreferred
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldLogs
+            Status: Enabled
+            ExpirationInDays: 90
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: AccessLogs
+
+  EvidenceBucket:
+    Type: AWS::S3::Bucket
+    DependsOn: EvidenceLoggingBucket
+    DeletionPolicy: Delete
+    Properties:
       BucketName: !Sub '${BucketName}-${AWS::AccountId}-${AWS::Region}'
-      AccessControl: Private
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
@@ -164,6 +195,9 @@ Resources:
               SSEAlgorithm: AES256
       VersioningConfiguration:
         Status: Enabled
+      LoggingConfiguration:
+        DestinationBucketName: !Ref EvidenceLoggingBucket
+        LogFilePrefix: evidence-bucket-logs/
       CorsConfiguration:
         CorsRules:
           - AllowedHeaders: ['*']
@@ -195,7 +229,8 @@ Resources:
             Action:
               - ses:SendEmail
               - ses:SendRawEmail
-            Resource: '*'
+            Resource:
+              - !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/*'
           - Effect: Allow
             Action:
               - s3:PutObject
@@ -295,6 +330,36 @@ Resources:
   # ========================================
   # Lambda Function to Upload Prompts to S3
   # ========================================
+  
+  PromptUploaderManagedPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:DeleteObject
+            Resource:
+              - !Sub 'arn:aws:s3:::${EvidenceBucket}/config/prompts/*'
+              - !Sub 'arn:aws:s3:::${EvidenceBucket}/evidence/*'
+              - !Sub 'arn:aws:s3:::${EvidenceBucket}/workflow-documents/*'
+              - !Sub 'arn:aws:s3:::${EvidenceBucket}/config/workflows/*'
+              - !Sub 'arn:aws:s3:::${EvidenceBucket}/chat-logs/*'
+              - !Sub 'arn:aws:s3:::${EvidenceBucket}/reports/*'
+          - Effect: Allow
+            Action:
+              - ses:VerifyEmailIdentity
+              - ses:GetIdentityVerificationAttributes
+            Resource:
+              - !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/*'
+          - Effect: Allow
+            Action:
+              - sqs:SendMessage
+            Resource:
+              - !GetAtt PromptUploaderDLQ.Arn
+
   PromptUploaderRole:
     Type: AWS::IAM::Role
     Properties:
@@ -307,27 +372,14 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
-      Policies:
-        - PolicyName: S3PromptUpload
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - s3:PutObject
-                  - s3:DeleteObject
-                Resource:
-                  - !Sub 'arn:aws:s3:::${EvidenceBucket}/config/prompts/*'
-                  - !Sub 'arn:aws:s3:::${EvidenceBucket}/evidence/*'
-                  - !Sub 'arn:aws:s3:::${EvidenceBucket}/workflow-documents/*'
-                  - !Sub 'arn:aws:s3:::${EvidenceBucket}/config/workflows/*'
-                  - !Sub 'arn:aws:s3:::${EvidenceBucket}/chat-logs/*'
-                  - !Sub 'arn:aws:s3:::${EvidenceBucket}/reports/*'
-              - Effect: Allow
-                Action:
-                  - ses:VerifyEmailIdentity
-                  - ses:GetIdentityVerificationAttributes
-                Resource: '*'
+        - !Ref PromptUploaderManagedPolicy
+
+  PromptUploaderDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${AWS::StackName}-prompt-uploader-dlq'
+      MessageRetentionPeriod: 1209600
+      KmsMasterKeyId: alias/aws/sqs
 
   PromptUploaderFunction:
     Type: AWS::Lambda::Function
@@ -336,6 +388,9 @@ Resources:
       Handler: index.handler
       Role: !GetAtt PromptUploaderRole.Arn
       Timeout: 60
+      ReservedConcurrentExecutions: 5
+      DeadLetterConfig:
+        TargetArn: !GetAtt PromptUploaderDLQ.Arn
       Code:
         ZipFile: |
           import boto3
@@ -343,8 +398,9 @@ Resources:
           
           s3 = boto3.client('s3')
           
-          COMPLIANCE_PROMPT = """You are a compliance evidence collection assistant. You ONLY help with:
+          COMPLIANCE_PROMPT = """You are a compliance evidence collection assistant. You help with compliance, audit, and regulatory matters.
 
+          TOPICS YOU CAN HELP WITH:
           - SOX compliance questions and procedures
           - HIPAA compliance and healthcare data protection
           - PCI DSS compliance and payment security
@@ -358,6 +414,14 @@ Resources:
           - Risk assessment and compliance monitoring
           - Data governance and security compliance
 
+          EDUCATIONAL QUESTIONS - ANSWER THESE:
+          When users ask "What is [compliance topic]?" or "Explain [compliance concept]", provide helpful educational answers about compliance frameworks, requirements, and best practices.
+
+          Examples:
+          - "What is SOX compliance?" → Explain SOX and its requirements
+          - "How do I collect evidence for HIPAA?" → Explain HIPAA evidence collection procedures
+          - "What documentation is required for PCI DSS?" → List PCI DSS documentation requirements
+
           BROWSER AUTOMATION CAPABILITIES:
           You can help users with browser automation for compliance evidence collection:
           - "navigate to [website]" or "open [website]" - Navigate to websites
@@ -366,21 +430,42 @@ Resources:
           - "type [text]" - Type text into forms
           - "search for [term]" - Search on current page
 
-          STRICT RULES:
-          - ONLY answer compliance, audit, regulatory, evidence, or documentation related questions
-          - ONLY perform browser automation for compliance evidence collection purposes
-          - For ANY non-compliance questions, respond: "I can only assist with compliance and evidence collection matters. Please ask about regulatory compliance, audit procedures, or evidence documentation."
-          - Do NOT provide general information, coding help, personal advice, or non-compliance topics
-          - Keep responses focused on compliance and evidence collection
+          WHEN TO USE BROWSER AUTOMATION:
+          - Only use navigation/automation when the user explicitly asks to navigate, open a site, or take a screenshot
+          - For educational questions, provide answers first - don't automatically navigate
+          - Example: "How do I collect HIPAA evidence?" → Answer the question, don't navigate to HHS.gov
 
-          When users ask for browser automation (navigate, screenshot, click, type), acknowledge the request and explain you'll help them collect compliance evidence."""
+          STRICT RULES FOR OFF-TOPIC QUESTIONS:
+          For questions that are clearly NOT about compliance, audit, or regulatory matters, respond:
+          "I can only assist with compliance and evidence collection matters. Please ask about regulatory compliance, audit procedures, or evidence documentation."
+
+          Examples of OFF-TOPIC (reject these):
+          - Weather, news, current events
+          - General coding or programming help
+          - Personal advice or entertainment
+          - Math problems or homework
+          - Non-compliance business questions
+
+          RESPONSE GUIDELINES:
+          - Be helpful and educational for compliance topics
+          - Provide specific, actionable guidance
+          - Keep responses focused on compliance and evidence collection
+          - Use browser automation only when explicitly requested"""
           
           WORKFLOW_DESIGNER_PROMPT = """You are an expert at creating browser automation workflows. Analyze this document and create EXECUTABLE workflow steps that can be run by an automation system.
 
           DOCUMENT CONTENT:
           {{DOCUMENT_TEXT}}
 
-          CRITICAL: Create workflows with INDIVIDUAL, EXECUTABLE steps using these EXACT action types:
+          CRITICAL JSON FORMATTING RULES - FOLLOW EXACTLY:
+          1. Return ONLY valid JSON - no markdown, no explanations, no code blocks
+          2. Do NOT wrap JSON in ```json or ``` markers
+          3. EVERY array element MUST have a comma after it (except the last one)
+          4. EVERY object property MUST have a comma after it (except the last one)
+          5. NO trailing commas before closing brackets ] or braces }
+          6. All strings must use double quotes, not single quotes
+          7. When you have multiple steps in the array, format like: [{step1}, {step2}, {step3}]
+          8. Test your JSON is valid before returning
 
           ALLOWED ACTIONS:
           - "navigate": Go to a specific URL (requires "url" field)
@@ -396,6 +481,7 @@ Resources:
           4. Break complex procedures into individual executable steps
           5. Add wait_for_user steps for login/authentication
           6. Add screenshot steps after important pages for evidence
+          7. ENSURE proper comma placement between all array elements
 
           EXAMPLE OF CORRECT FORMAT:
           {
@@ -427,9 +513,7 @@ Resources:
             ]
           }
 
-          Based on the document, create executable workflows with individual steps that can be automated. Use real URLs and break down complex procedures into simple, executable actions.
-
-          Return ONLY the JSON:"""
+          IMPORTANT: Return ONLY the raw JSON object. No markdown formatting, no explanations, no code blocks. Just the JSON."""
           
           def handler(event, context):
               try:
@@ -509,6 +593,128 @@ Resources:
       AdminEmail: !Ref AdminEmail
       Region: !Ref AWS::Region
       Version: "1.1"  # Increment to force update
+
+  # ========================================
+  # S3 Bucket Cleanup on Stack Deletion
+  # ========================================
+  
+  BucketCleanupManagedPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:ListBucket
+              - s3:ListBucketVersions
+            Resource:
+              - !GetAtt EvidenceBucket.Arn
+              - !GetAtt EvidenceLoggingBucket.Arn
+          - Effect: Allow
+            Action:
+              - s3:DeleteObject
+              - s3:DeleteObjectVersion
+            Resource:
+              - !Sub '${EvidenceBucket.Arn}/*'
+              - !Sub '${EvidenceLoggingBucket.Arn}/*'
+          - Effect: Allow
+            Action:
+              - sqs:SendMessage
+            Resource:
+              - !GetAtt BucketCleanupDLQ.Arn
+  
+  BucketCleanupRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - !Ref BucketCleanupManagedPolicy
+
+  BucketCleanupDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${AWS::StackName}-bucket-cleanup-dlq'
+      MessageRetentionPeriod: 1209600
+      KmsMasterKeyId: alias/aws/sqs
+
+  BucketCleanupFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt BucketCleanupRole.Arn
+      Timeout: 300
+      ReservedConcurrentExecutions: 2
+      DeadLetterConfig:
+        TargetArn: !GetAtt BucketCleanupDLQ.Arn
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+          
+          s3 = boto3.client('s3')
+          
+          def empty_bucket(bucket_name):
+              try:
+                  print(f"Emptying bucket: {bucket_name}")
+                  paginator = s3.get_paginator('list_object_versions')
+                  
+                  for page in paginator.paginate(Bucket=bucket_name):
+                      objects_to_delete = []
+                      
+                      for version in page.get('Versions', []):
+                          objects_to_delete.append({'Key': version['Key'], 'VersionId': version['VersionId']})
+                      
+                      for marker in page.get('DeleteMarkers', []):
+                          objects_to_delete.append({'Key': marker['Key'], 'VersionId': marker['VersionId']})
+                      
+                      if objects_to_delete:
+                          s3.delete_objects(Bucket=bucket_name, Delete={'Objects': objects_to_delete})
+                          print(f"Deleted {len(objects_to_delete)} objects from {bucket_name}")
+                  
+                  print(f"Successfully emptied bucket: {bucket_name}")
+              except Exception as e:
+                  print(f"Error emptying bucket {bucket_name}: {str(e)}")
+                  # Don't fail - bucket might not exist or already be empty
+          
+          def handler(event, context):
+              try:
+                  request_type = event['RequestType']
+                  evidence_bucket = event['ResourceProperties']['EvidenceBucket']
+                  logging_bucket = event['ResourceProperties']['LoggingBucket']
+                  
+                  print(f"Request type: {request_type}")
+                  print(f"Evidence bucket: {evidence_bucket}")
+                  print(f"Logging bucket: {logging_bucket}")
+                  
+                  # Empty buckets on both Delete and Update (Update might be replacing buckets)
+                  if request_type in ['Delete', 'Update']:
+                      empty_bucket(logging_bucket)  # Empty logging bucket first
+                      empty_bucket(evidence_bucket)
+                      print("Bucket cleanup completed")
+                  
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                  
+              except Exception as e:
+                  print(f"Error: {str(e)}")
+                  # Send success anyway to not block stack operations
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {'Warning': str(e)})
+
+  BucketCleanup:
+    Type: Custom::BucketCleanup
+    Properties:
+      ServiceToken: !GetAtt BucketCleanupFunction.Arn
+      EvidenceBucket: !Ref EvidenceBucket
+      LoggingBucket: !Ref EvidenceLoggingBucket
+      Version: "1.2"  # Increment to force cleanup on update
 
 Outputs:
   # Cognito Outputs

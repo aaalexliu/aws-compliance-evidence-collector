@@ -1,35 +1,35 @@
 {
   "workflows": [
     {
-      "name": "GitHub SOX Audit",
-      "description": "Standard GitHub compliance evidence collection with login",
+      "name": "AWS IAM Access Review",
+      "description": "Review AWS IAM users and roles for SOX compliance",
       "steps": [
         {
           "action": "navigate",
-          "url": "https://github.com/login",
-          "description": "Navigate to GitHub login page"
+          "url": "https://console.aws.amazon.com/iam/home#/users",
+          "description": "Navigate to AWS IAM console"
         },
         {
           "action": "wait_for_user",
-          "description": "Please log into GitHub, then click Continue"
+          "description": "Please log into AWS Console, then click Continue"
         },
         {
-          "action": "navigate", 
-          "url": "https://github.com/settings/organizations",
-          "description": "Navigate to organization page"
-        },
-        {
-          "action": "screenshot",
-          "description": "Take screenshot of organization page"
-        },
-        {
-          "action": "click",
-          "element": "aws-samples",
-          "description": "Click on aws-samples organization"
+          "action": "navigate",
+          "url": "https://console.aws.amazon.com/iam/home#/users",
+          "description": "Navigate to IAM Users page"
         },
         {
           "action": "screenshot",
-          "description": "Take screenshot of repositories"
+          "description": "Capture IAM Users page for evidence"
+        },
+        {
+          "action": "navigate",
+          "url": "https://console.aws.amazon.com/iam/home#/roles",
+          "description": "Navigate to IAM Roles page"
+        },
+        {
+          "action": "screenshot",
+          "description": "Capture IAM Roles page for evidence"
         }
       ]
     }
