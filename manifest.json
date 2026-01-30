@@ -12,12 +12,7 @@
     "scripting"
   ],
   "host_permissions": [
-    "<all_urls>",
-    "https://cognito-idp.*.amazonaws.com/*",
-    "https://cognito-identity.*.amazonaws.com/*",
-    "https://bedrock-runtime.*.amazonaws.com/*",
-    "https://*.s3.amazonaws.com/*",
-    "https://*.s3.*.amazonaws.com/*"
+    "<all_urls>"
   ],
   "action": {
     "default_title": "Evidence Collection"

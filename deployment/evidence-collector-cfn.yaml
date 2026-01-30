@@ -515,6 +515,29 @@ Resources:
 
           IMPORTANT: Return ONLY the raw JSON object. No markdown formatting, no explanations, no code blocks. Just the JSON."""
           
+          REPORT_ANALYSIS_PROMPT = """You are an expert compliance auditor analyzing workflow execution results.
+
+          WORKFLOW EXECUTION DATA:
+          {{WORKFLOW_DATA}}
+
+          Please analyze this workflow execution and provide a comprehensive compliance report with the following sections.
+
+          1. EXECUTIVE SUMMARY - Provide 2-3 sentences summarizing what was accomplished, highlight the overall outcome, and mention the workflow purpose and completion status.
+
+          2. KEY FINDINGS - List any issues, errors, or failures encountered. Note successful completions and milestones. Identify any notable observations or patterns. Highlight any security or compliance concerns.
+
+          3. COMPLIANCE STATUS - Assess whether all required steps completed successfully. Determine if the workflow meets compliance requirements. Provide a clear status (Compliant, Non-Compliant, or Partial Compliance) and explain the reasoning.
+
+          4. RECOMMENDATIONS - Suggest improvements for future executions. Recommend remediation steps for any failures. Provide best practices or optimization suggestions. Note any follow-up actions required.
+
+          FORMAT YOUR RESPONSE EXACTLY AS:
+          EXECUTIVE_SUMMARY: [your 2-3 sentence summary]
+          KEY_FINDINGS: [your detailed findings]
+          COMPLIANCE_STATUS: [Compliant/Non-Compliant/Partial Compliance with explanation]
+          RECOMMENDATIONS: [your recommendations]
+
+          Be specific, professional, and focus on compliance and audit requirements."""
+          
           def handler(event, context):
               try:
                   properties = event['ResourceProperties']
@@ -535,6 +558,14 @@ Resources:
                           Bucket=bucket,
                           Key='config/prompts/workflow-designer-prompt.txt',
                           Body=WORKFLOW_DESIGNER_PROMPT.encode('utf-8'),
+                          ContentType='text/plain'
+                      )
+                      
+                      # Upload report analysis prompt
+                      s3.put_object(
+                          Bucket=bucket,
+                          Key='config/prompts/report-analysis-prompt.txt',
+                          Body=REPORT_ANALYSIS_PROMPT.encode('utf-8'),
                           ContentType='text/plain'
                       )
                       
@@ -575,6 +606,7 @@ Resources:
                       try:
                           s3.delete_object(Bucket=bucket, Key='config/prompts/compliance-assistant-prompt.txt')
                           s3.delete_object(Bucket=bucket, Key='config/prompts/workflow-designer-prompt.txt')
+                          s3.delete_object(Bucket=bucket, Key='config/prompts/report-analysis-prompt.txt')
                           # Note: README files will be deleted when bucket is deleted
                       except:
                           pass

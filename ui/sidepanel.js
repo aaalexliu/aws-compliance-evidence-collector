@@ -747,8 +747,48 @@ document.addEventListener('DOMContentLoaded', async function() {
   async function generateWorkflowReport(workflowName, logData) {
     addMessage('🤖 Analyzing workflow execution...', 'assistant');
     
+    // Get config and credentials for S3 access
+    const config = await chrome.storage.local.get(['cognitoConfig']);
+    const session = await chrome.storage.session.get(['credentials']);
+    
+    if (!config.cognitoConfig || !session.credentials) {
+      throw new Error('Configuration or credentials not found');
+    }
+    
+    const region = config.cognitoConfig.region;
+    const s3BucketName = config.cognitoConfig.s3BucketName;
+    const credentials = session.credentials;
+    
+    // Fetch report analysis prompt from S3
+    let reportPromptTemplate;
+    try {
+      console.log('Fetching report analysis prompt from S3');
+      
+      // Configure AWS SDK with Cognito credentials
+      AWS.config.update({
+        accessKeyId: credentials.AccessKeyId,
+        secretAccessKey: credentials.SecretKey,
+        sessionToken: credentials.SessionToken,
+        region: region
+      });
+
+      const s3 = new AWS.S3();
+      
+      const getParams = {
+        Bucket: s3BucketName,
+        Key: 'config/prompts/report-analysis-prompt.txt'
+      };
+      
+      const result = await s3.getObject(getParams).promise();
+      reportPromptTemplate = result.Body.toString('utf-8');
+      console.log('Loaded report analysis prompt from S3');
+    } catch (error) {
+      console.error('Failed to load prompt from S3:', error);
+      throw new Error('Report analysis prompt not available. Please ensure prompts are uploaded to S3.');
+    }
+    
     // Prepare workflow summary for Nova Pro
-    const workflowSummary = `
+    const workflowData = `
 Workflow: ${logData.workflowName}
 User: ${logData.username}
 Start Time: ${new Date(logData.startTime).toLocaleString()}
@@ -763,19 +803,10 @@ ${idx + 1}. ${step.action.toUpperCase()}: ${step.description}
    Duration: ${step.endTime ? Math.round((new Date(step.endTime) - new Date(step.startTime)) / 1000) : 'N/A'} seconds
    ${step.error ? `Error: ${step.error}` : ''}
 `).join('\n')}
-
-Please analyze this workflow execution and provide:
-1. Executive Summary (2-3 sentences about what was accomplished)
-2. Key Findings (any issues, successes, or notable observations)
-3. Compliance Status (whether all steps completed successfully)
-4. Recommendations (any suggestions for improvement)
-
-Format your response as:
-EXECUTIVE_SUMMARY: [your summary]
-KEY_FINDINGS: [your findings]
-COMPLIANCE_STATUS: [status]
-RECOMMENDATIONS: [your recommendations]
 `;
+
+    // Replace placeholder with actual workflow data
+    const workflowSummary = reportPromptTemplate.replace('{{WORKFLOW_DATA}}', workflowData);
 
     // Get Nova Pro analysis
     const analysis = await novaProAgent.simpleChat(workflowSummary);
