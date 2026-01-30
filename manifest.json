@@ -13,17 +13,11 @@
   ],
   "host_permissions": [
     "<all_urls>",
-    "https://cognito-idp.us-east-1.amazonaws.com/*",
-    "https://cognito-idp.us-west-2.amazonaws.com/*",
-    "https://cognito-idp.eu-west-1.amazonaws.com/*",
-    "https://cognito-identity.us-east-1.amazonaws.com/*",
-    "https://cognito-identity.us-west-2.amazonaws.com/*",
-    "https://cognito-identity.eu-west-1.amazonaws.com/*",
-    "https://bedrock-runtime.us-east-1.amazonaws.com/*",
-    "https://bedrock-runtime.us-west-2.amazonaws.com/*",
+    "https://cognito-idp.*.amazonaws.com/*",
+    "https://cognito-identity.*.amazonaws.com/*",
+    "https://bedrock-runtime.*.amazonaws.com/*",
     "https://*.s3.amazonaws.com/*",
-    "https://*.s3.us-east-1.amazonaws.com/*",
-    "https://*.s3.us-west-2.amazonaws.com/*"
+    "https://*.s3.*.amazonaws.com/*"
   ],
   "action": {
     "default_title": "Evidence Collection"
