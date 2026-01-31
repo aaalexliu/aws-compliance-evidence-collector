@@ -1,0 +1,768 @@
+// Evidence Collector Tools (Firefox version)
+class EvidenceTools {
+  constructor(components) {
+    this.components = components;
+    this.tools = [
+      {
+        tool_name: "SearchWebsite",
+        description: "Search for elements on the current webpage using natural language",
+        inputSchema: {
+          json: JSON.stringify({
+            type: "object",
+            properties: {
+              query: {
+                type: "string",
+                description: "Natural language description of what to find (e.g., 'login button', 'search box', 'submit form')"
+              }
+            },
+            required: ["query"]
+          })
+        },
+        script: this.searchWebsite.bind(this),
+        run_after_app_init: false,
+        order: 1
+      },
+      {
+        tool_name: "NavigateToURL",
+        description: "Navigate to a specific URL or website",
+        inputSchema: {
+          json: JSON.stringify({
+            type: "object",
+            properties: {
+              url: {
+                type: "string",
+                description: "The URL to navigate to (e.g., 'github.com', 'https://github.com/user/repo')"
+              }
+            },
+            required: ["url"]
+          })
+        },
+        script: this.navigateToURL.bind(this),
+        run_after_app_init: false,
+        order: 2
+      },
+      {
+        tool_name: "GitHubSearch",
+        description: "Search for GitHub repositories by name or keywords",
+        inputSchema: {
+          json: JSON.stringify({
+            type: "object",
+            properties: {
+              query: {
+                type: "string",
+                description: "Search terms for the repository (e.g., 'conversational athena', 'bedrock samples')"
+              }
+            },
+            required: ["query"]
+          })
+        },
+        script: this.githubSearch.bind(this),
+        run_after_app_init: false,
+        order: 3
+      },
+      {
+        tool_name: "ClickElement",
+        description: "Click on an element found on the current page",
+        inputSchema: {
+          json: JSON.stringify({
+            type: "object",
+            properties: {
+              description: {
+                type: "string",
+                description: "Description of element to click (e.g., 'first repository link', 'login button')"
+              }
+            },
+            required: ["description"]
+          })
+        },
+        script: this.clickElement.bind(this),
+        run_after_app_init: false,
+        order: 4
+      },
+      {
+        tool_name: "TakeScreenshot",
+        description: "Take a screenshot of the current page",
+        inputSchema: {
+          json: JSON.stringify({
+            type: "object",
+            properties: {
+              description: {
+                type: "string",
+                description: "Optional description for the screenshot"
+              }
+            }
+          })
+        },
+        script: this.takeScreenshot.bind(this),
+        run_after_app_init: false,
+        order: 5
+      },
+      {
+        tool_name: "SelectCheckbox",
+        description: "Select or deselect checkboxes with state detection and validation",
+        inputSchema: {
+          json: JSON.stringify({
+            type: "object",
+            properties: {
+              description: {
+                type: "string",
+                description: "Description of the checkbox to select (e.g., 'terms and conditions', 'select all', 'privacy policy')"
+              },
+              action: {
+                type: "string",
+                enum: ["check", "uncheck", "toggle"],
+                description: "Action to perform: check (select), uncheck (deselect), or toggle (switch state)",
+                default: "check"
+              }
+            },
+            required: ["description"]
+          })
+        },
+        script: this.selectCheckbox.bind(this),
+        run_after_app_init: false,
+        order: 5.5
+      },
+      {
+        tool_name: "ShowCheckboxes",
+        description: "Find and list all checkboxes on the current page with their descriptions",
+        inputSchema: {
+          json: JSON.stringify({
+            type: "object",
+            properties: {}
+          })
+        },
+        script: this.showCheckboxes.bind(this),
+        run_after_app_init: false,
+        order: 5.6
+      },
+      {
+        tool_name: "TypeText",
+        description: "Type text into an input field or search box on the current page",
+        inputSchema: {
+          json: JSON.stringify({
+            type: "object",
+            properties: {
+              text: {
+                type: "string",
+                description: "Text to type into the input field"
+              },
+              element: {
+                type: "string", 
+                description: "Description of the input field (e.g., 'search box', 'email field', 'password field')"
+              }
+            },
+            required: ["text", "element"]
+          })
+        },
+        script: this.typeText.bind(this),
+        run_after_app_init: false,
+        order: 6
+      },
+      {
+        tool_name: "ScrollPage",
+        description: "Scroll the page up or down",
+        inputSchema: {
+          json: JSON.stringify({
+            type: "object",
+            properties: {
+              direction: {
+                type: "string",
+                enum: ["up", "down"],
+                description: "Direction to scroll (up or down)"
+              },
+              amount: {
+                type: "string",
+                enum: ["small", "medium", "large", "top", "bottom"],
+                description: "Amount to scroll (small, medium, large, top, bottom)"
+              }
+            },
+            required: ["direction"]
+          })
+        },
+        script: this.scrollPage.bind(this),
+        run_after_app_init: false,
+        order: 7
+      },
+      {
+        tool_name: "EmailReport",
+        description: "Generate and email a workflow report to a specified recipient. Uses the most recent workflow report or a specific workflow if name is provided.",
+        inputSchema: {
+          json: JSON.stringify({
+            type: "object",
+            properties: {
+              recipientEmail: {
+                type: "string",
+                description: "Email address to send the report to"
+              },
+              workflowName: {
+                type: "string",
+                description: "Optional: specific workflow name to send report for. If not provided, uses the most recent workflow."
+              },
+              subject: {
+                type: "string",
+                description: "Optional: custom email subject line"
+              }
+            },
+            required: ["recipientEmail"]
+          })
+        },
+        script: EvidenceTools.emailReport.bind(this),
+        run_after_app_init: false,
+        order: 8
+      }
+    ];
+  }
+
+  async takeScreenshot(args) {
+    const { input, toolName } = args;
+    console.log(`Tool::Script::${toolName} executed with input:`, input);
+
+    try {
+      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+      const tab = tabs[0];
+      
+      // Retry logic for screenshot capture
+      let screenshot;
+      let retries = 3;
+      while (retries > 0) {
+        try {
+          screenshot = await browser.tabs.captureVisibleTab(null, { format: 'png' });
+          break;
+        } catch (captureError) {
+          retries--;
+          if (retries === 0) throw captureError;
+          console.log(`Screenshot capture failed, retrying... (${retries} attempts left)`);
+          await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms before retry
+        }
+      }
+      
+      const timestamp = new Date().toLocaleString('en-US', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        timeZoneName: 'short'
+      });
+      
+      // Add timestamp overlay to image
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      
+      return new Promise((resolve) => {
+        img.onload = async () => {
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0);
+          
+          // Add timestamp overlay
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+          ctx.fillRect(10, 10, 200, 30);
+          ctx.fillStyle = 'white';
+          ctx.font = '14px Arial';
+          ctx.fillText(timestamp, 15, 30);
+          
+          const finalScreenshot = canvas.toDataURL('image/png');
+          
+          // Upload to S3 with workflow context
+          try {
+            const s3Manager = new window.S3Manager();
+            const workflowName = input?.workflowName || null;
+            const stepDescription = input?.stepDescription || 'screenshot';
+            const result = await s3Manager.uploadScreenshot(finalScreenshot, tab.url, stepDescription, workflowName);
+            
+            resolve(JSON.stringify({
+              success: true,
+              message: `Screenshot captured at ${timestamp}. Uploaded to S3: ${result.filename}`,
+              screenshot: finalScreenshot,
+              s3Upload: result
+            }));
+          } catch (s3Error) {
+            resolve(JSON.stringify({
+              success: true,
+              message: `Screenshot captured at ${timestamp}. S3 upload failed: ${s3Error.message}`,
+              screenshot: finalScreenshot,
+              s3Error: s3Error.message
+            }));
+          }
+        };
+        img.src = screenshot;
+      });
+    } catch (error) {
+      console.error(`Tool::Script::${toolName} error:`, error);
+      return JSON.stringify({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  async clickElement(args) {
+    const { input, toolName } = args;
+    console.log(`Tool::Script::${toolName} executed with input:`, input);
+
+    try {
+      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+      const tab = tabs[0];
+      
+      const response = await browser.tabs.sendMessage(tab.id, {
+        action: 'clickElement',
+        description: input.description
+      });
+
+      if (response && response.success) {
+        return JSON.stringify({
+          success: true,
+          message: response.message || `Clicked: ${input.description}`
+        });
+      } else {
+        return JSON.stringify({
+          success: false,
+          error: response?.error || `Could not find element: ${input.description}`
+        });
+      }
+    } catch (error) {
+      console.error(`Tool::Script::${toolName} error:`, error);
+      return JSON.stringify({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  async githubSearch(args) {
+    const { input, toolName } = args;
+    console.log(`Tool::Script::${toolName} executed with input:`, input);
+
+    try {
+      // Navigate to GitHub search
+      const searchUrl = `https://github.com/search?q=${encodeURIComponent(input.query)}&type=repositories`;
+      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+      const tab = tabs[0];
+      await browser.tabs.update(tab.id, { url: searchUrl });
+
+      // Wait for page to load, then get repository options
+      return new Promise((resolve) => {
+        setTimeout(async () => {
+          try {
+            const response = await browser.tabs.sendMessage(tab.id, {
+              action: 'searchElements',
+              query: 'repository'
+            });
+            
+            if (response && response.elements && response.elements.length > 0) {
+              const repos = response.elements.slice(0, 5).map((el, i) => 
+                `${i+1}. ${el.text.substring(0, 80)}`
+              ).join('\n');
+              
+              resolve(JSON.stringify({
+                success: true,
+                message: `Found repositories for "${input.query}":\n\n${repos}\n\nTell me which number to click!`,
+                repositories: response.elements
+              }));
+            } else {
+              resolve(JSON.stringify({
+                success: true,
+                message: `Searched for "${input.query}" but still loading results. Try asking "what options" in a moment.`
+              }));
+            }
+          } catch (error) {
+            resolve(JSON.stringify({
+              success: true,
+              message: `Searched for "${input.query}". Page is loading - ask me "what options" in a moment.`
+            }));
+          }
+        }, 4000);
+      });
+    } catch (error) {
+      console.error(`Tool::Script::${toolName} error:`, error);
+      return JSON.stringify({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  async navigateToURL(args) {
+    const { input, toolName } = args;
+    console.log(`Tool::Script::${toolName} executed with input:`, input);
+
+    try {
+      let url = input.url;
+      
+      // Add https:// if no protocol specified
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = 'https://' + url;
+      }
+
+      // Update current tab
+      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+      const tab = tabs[0];
+      await browser.tabs.update(tab.id, { url: url });
+
+      return JSON.stringify({
+        success: true,
+        message: `Navigating to ${url}`,
+        url: url
+      });
+    } catch (error) {
+      console.error(`Tool::Script::${toolName} error:`, error);
+      return JSON.stringify({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  async searchWebsite(args) {
+    const { input, toolName } = args;
+    console.log(`Tool::Script::${toolName} executed with input:`, input);
+
+    try {
+      // Send message to content script to search for elements
+      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+      const tab = tabs[0];
+      
+      const response = await browser.tabs.sendMessage(tab.id, {
+        action: 'searchElements',
+        query: input.query
+      });
+
+      if (response && response.elements && response.elements.length > 0) {
+        return JSON.stringify({
+          success: true,
+          elements: response.elements,
+          message: `Found ${response.elements.length} matching elements`
+        });
+      } else {
+        return JSON.stringify({
+          success: false,
+          message: `No elements found matching "${input.query}"`
+        });
+      }
+    } catch (error) {
+      console.error(`Tool::Script::${toolName} error:`, error);
+      return JSON.stringify({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  getTools() {
+    return this.tools;
+  }
+
+  async executeTool(toolName, input) {
+    const tool = this.tools.find(t => t.tool_name === toolName);
+    if (!tool) {
+      throw new Error(`Tool ${toolName} not found`);
+    }
+
+    return await tool.script({ input, toolName });
+  }
+
+  async showCheckboxes(args) {
+    const { toolName } = args;
+    console.log(`Tool::Script::${toolName} executed`);
+
+    try {
+      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+      const tab = tabs[0];
+      
+      const response = await browser.tabs.sendMessage(tab.id, {
+        action: 'showCheckboxes'
+      });
+
+      if (response.checkboxes.length === 0) {
+        return JSON.stringify({
+          success: true,
+          message: "No checkboxes found on this page."
+        });
+      }
+
+      const checkboxList = response.checkboxes.map((cb, index) => 
+        `${index + 1}. "${cb.text}" (${cb.checked ? 'checked' : 'unchecked'})`
+      ).join('\n');
+
+      return JSON.stringify({
+        success: true,
+        message: `Found ${response.checkboxes.length} checkboxes on this page:\n\n${checkboxList}\n\nUse SelectCheckbox with any of these descriptions to interact with them.`
+      });
+    } catch (error) {
+      console.error(`Tool::Script::${toolName} error:`, error);
+      return JSON.stringify({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  async selectCheckbox(args) {
+    const { input, toolName } = args;
+    console.log(`Tool::Script::${toolName} executed with input:`, input);
+
+    try {
+      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+      const tab = tabs[0];
+      
+      const response = await browser.tabs.sendMessage(tab.id, {
+        action: 'selectCheckbox',
+        description: input.description,
+        checkboxAction: input.action || 'check'
+      });
+
+      return JSON.stringify({
+        success: true,
+        message: response.message,
+        previousState: response.previousState,
+        newState: response.newState,
+        element: response.element
+      });
+    } catch (error) {
+      console.error(`Tool::Script::${toolName} error:`, error);
+      return JSON.stringify({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  async typeText(args) {
+    const { input, toolName } = args;
+    console.log(`Tool::Script::${toolName} executed with input:`, input);
+
+    try {
+      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+      const tab = tabs[0];
+      
+      // Try to inject content script if not already present
+      try {
+        await browser.tabs.executeScript(tab.id, {
+          file: 'core/content.js'
+        });
+      } catch (e) {
+        // Content script might already be injected, continue
+      }
+      
+      const response = await browser.tabs.sendMessage(tab.id, {
+        action: 'typeText',
+        text: input.text,
+        element: input.element
+      });
+
+      if (response && response.success) {
+        return JSON.stringify({
+          success: true,
+          message: `Typed "${input.text}" into ${input.element}`
+        });
+      } else {
+        return JSON.stringify({
+          success: false,
+          error: response?.error || 'Failed to type text'
+        });
+      }
+    } catch (error) {
+      console.error(`Tool::Script::${toolName} error:`, error);
+      return JSON.stringify({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  async scrollPage(args) {
+    const { input, toolName } = args;
+    console.log(`Tool::Script::${toolName} executed with input:`, input);
+
+    try {
+      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+      const tab = tabs[0];
+      
+      const response = await browser.tabs.sendMessage(tab.id, {
+        action: 'scrollPage',
+        direction: input.direction,
+        amount: input.amount || 'medium'
+      });
+
+      if (response && response.success) {
+        return JSON.stringify({
+          success: true,
+          message: `Scrolled ${input.direction} (${input.amount || 'medium'})`
+        });
+      } else {
+        return JSON.stringify({
+          success: false,
+          error: response?.error || 'Failed to scroll page'
+        });
+      }
+    } catch (error) {
+      console.error(`Tool::Script::${toolName} error:`, error);
+      return JSON.stringify({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  // Interactive workflow tools
+  static async clickElement(input) {
+    try {
+      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+      const tab = tabs[0];
+      
+      const response = await browser.tabs.sendMessage(tab.id, {
+        action: 'clickElement',
+        description: input.description
+      });
+
+      return JSON.stringify({
+        success: true,
+        message: response.message,
+        element: response.element
+      });
+    } catch (error) {
+      return JSON.stringify({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  static async selectCheckbox(input) {
+    try {
+      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+      const tab = tabs[0];
+      
+      const response = await browser.tabs.sendMessage(tab.id, {
+        action: 'selectCheckbox',
+        description: input.description,
+        checkboxAction: input.action || 'check'
+      });
+
+      return JSON.stringify({
+        success: true,
+        message: response.message,
+        previousState: response.previousState,
+        newState: response.newState,
+        element: response.element
+      });
+    } catch (error) {
+      return JSON.stringify({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  static async emailReport(args) {
+    const { input } = args;
+    try {
+      // Get active report from browser.storage
+      const storage = await browser.storage.session.get(['activeWorkflowReport', 'credentials']);
+      const activeReport = storage.activeWorkflowReport;
+      const credentials = storage.credentials;
+      
+      if (!activeReport) {
+        return JSON.stringify({
+          success: false,
+          error: 'No workflow report available. Please run a workflow first.'
+        });
+      }
+      
+      if (!credentials) {
+        return JSON.stringify({
+          success: false,
+          error: 'Not authenticated. Please log in first.'
+        });
+      }
+      
+      // Check if specific workflow requested
+      if (input.workflowName && activeReport.workflowName !== input.workflowName) {
+        return JSON.stringify({
+          success: false,
+          error: `Workflow "${input.workflowName}" not found. Only the most recent workflow report is available.`
+        });
+      }
+      
+      // Get config and user email
+      const config = await browser.storage.local.get(['cognitoConfig']);
+      const session = await browser.storage.session.get(['userEmail', 'accessToken']);
+      
+      // Get user email if not cached
+      let userEmail = session.userEmail;
+      if (!userEmail && session.accessToken) {
+        try {
+          const userUrl = `https://cognito-idp.${config.cognitoConfig.region}.amazonaws.com/`;
+          const response = await fetch(userUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-amz-json-1.1',
+              'X-Amz-Target': 'AWSCognitoIdentityProviderService.GetUser'
+            },
+            body: JSON.stringify({ AccessToken: session.accessToken })
+          });
+          const userData = await response.json();
+          const emailAttr = userData.UserAttributes?.find(attr => attr.Name === 'email');
+          userEmail = emailAttr?.Value;
+        } catch (error) {
+          console.error('Failed to get user email:', error);
+        }
+      }
+      
+      // Validate recipient email
+      if (!input.recipientEmail) {
+        return JSON.stringify({
+          success: false,
+          error: 'Recipient email is required'
+        });
+      }
+      
+      // Send email via SES
+      const AWS_SDK = window.AWS;
+      AWS_SDK.config.update({
+        accessKeyId: credentials.AccessKeyId,
+        secretAccessKey: credentials.SecretKey,
+        sessionToken: credentials.SessionToken,
+        region: config.cognitoConfig.region
+      });
+      
+      const ses = new AWS_SDK.SES();
+      const params = {
+        Source: userEmail || input.recipientEmail,
+        Destination: {
+          ToAddresses: [input.recipientEmail]
+        },
+        Message: {
+          Subject: {
+            Data: `Evidence Report: ${activeReport.workflowName}`,
+            Charset: 'UTF-8'
+          },
+          Body: {
+            Html: {
+              Data: activeReport.reportHTML,
+              Charset: 'UTF-8'
+            }
+          }
+        }
+      };
+      
+      await ses.sendEmail(params).promise();
+      
+      return JSON.stringify({
+        success: true,
+        message: `Report for "${activeReport.workflowName}" emailed to ${input.recipientEmail}`
+      });
+    } catch (error) {
+      return JSON.stringify({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+}
+
+// Export for use in sidebar
+window.EvidenceTools = EvidenceTools;

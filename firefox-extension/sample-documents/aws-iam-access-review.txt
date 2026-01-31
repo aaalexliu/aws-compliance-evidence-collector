@@ -1,0 +1,43 @@
+AWS IAM Access Review Procedure for SOX Compliance
+
+Purpose:
+This procedure outlines the quarterly access review process for AWS Identity and Access Management (IAM) to ensure compliance with SOX requirements for access controls and segregation of duties.
+
+Scope:
+This review covers all IAM users and roles with access to production AWS environments that handle financial data or systems.
+
+Frequency:
+This review must be performed quarterly, with evidence collected and documented for audit purposes.
+
+Procedure Steps:
+
+1. Access AWS IAM Console
+Navigate to the AWS IAM console at https://console.aws.amazon.com/iam/. Ensure you are logged in with administrative credentials that have permission to view all users and roles.
+
+2. User Authentication
+Log into the AWS Console using your administrator account. Multi-factor authentication (MFA) should be enabled for all administrative access.
+
+3. Review IAM Users
+Once logged in, navigate to the IAM Users page (https://console.aws.amazon.com/iam/home#/users) to review the complete list of users with access to the AWS account. This page shows all user accounts, their creation dates, and last activity.
+
+4. Capture Users Evidence
+Take a screenshot of the IAM Users page showing the complete list of users. This screenshot serves as evidence of the user population at the time of review. Ensure the screenshot includes the date and shows all relevant columns including username, creation date, and last activity.
+
+5. Review IAM Roles
+Navigate to the IAM Roles page (https://console.aws.amazon.com/iam/home#/roles) to review all roles configured in the account. Roles are used for delegated access and service-to-service authentication.
+
+6. Capture Roles Evidence
+Take a screenshot of the IAM Roles page showing all configured roles. This provides evidence of role-based access controls in place. The screenshot should include role names, creation dates, and trusted entities.
+
+Review Criteria:
+- Verify that all users have a valid business justification for access
+- Confirm that inactive users (no activity in 90+ days) are disabled or removed
+- Ensure roles follow the principle of least privilege
+- Validate that no users have direct administrative access without MFA
+- Check for any roles with overly permissive policies
+
+Documentation:
+All screenshots and findings must be documented in the quarterly access review report and retained for audit purposes for a minimum of 7 years per SOX requirements.
+
+Approval:
+The completed review must be approved by the IT Security Manager and submitted to the Internal Audit team within 5 business days of completion.
