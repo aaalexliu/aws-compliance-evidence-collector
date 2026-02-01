@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Evidence Collector Chrome Extension - Based on Nova Sonic Infrastructure'
+Description: 'Evidence Collector Browser Extension - Based on Nova Sonic Infrastructure'
 
 Parameters:
   Environment:
