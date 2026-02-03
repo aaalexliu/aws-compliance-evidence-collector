@@ -2,7 +2,7 @@
   "workflows": [
     {
       "name": "AWS IAM Access Review",
-      "description": "Review AWS IAM users and roles for SOX compliance",
+      "description": "Review AWS IAM users and roles for compliance",
       "steps": [
         {
           "action": "navigate",

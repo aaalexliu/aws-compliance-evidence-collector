@@ -489,6 +489,14 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         const s3 = new AWS.S3();
         
+        // Create backup of existing workflows before overwriting
+        try {
+          await this.createWorkflowBackup(s3);
+        } catch (backupError) {
+          console.warn('Failed to create backup (file may not exist yet):', backupError.message);
+          // Continue with save even if backup fails (e.g., first time save)
+        }
+        
         const uploadParams = {
           Bucket: this.config.s3BucketName,
           Key: key,
@@ -503,6 +511,43 @@ document.addEventListener('DOMContentLoaded', async function() {
       } catch (error) {
         console.error('Failed to save workflows to S3:', error);
         throw new Error(`Failed to save workflows: ${error.message}`);
+      }
+    }
+
+    async createWorkflowBackup(s3) {
+      const sourceKey = 'config/workflows/user-workflows.json';
+      
+      try {
+        // Get existing workflows file
+        const getParams = {
+          Bucket: this.config.s3BucketName,
+          Key: sourceKey
+        };
+        
+        const existingFile = await s3.getObject(getParams).promise();
+        
+        // Create timestamp for backup filename
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5); // YYYY-MM-DDTHH-MM-SS
+        const backupKey = `config/workflows/backups/user-workflows-${timestamp}.json`;
+        
+        // Save backup
+        const backupParams = {
+          Bucket: this.config.s3BucketName,
+          Key: backupKey,
+          Body: existingFile.Body,
+          ContentType: 'application/json'
+        };
+        
+        await s3.upload(backupParams).promise();
+        console.log('✅ Workflow backup created:', backupKey);
+        
+      } catch (error) {
+        // If file doesn't exist (NoSuchKey), it's likely the first save
+        if (error.code === 'NoSuchKey') {
+          console.log('No existing workflows to backup (first time save)');
+        } else {
+          throw error;
+        }
       }
     }
   }
@@ -1248,8 +1293,8 @@ ${idx + 1}. ${step.action.toUpperCase()}: ${step.description}
   // Initialize Nova Pro agent
   async function initializeNovaProAgent() {
     try {
-      if (window.NovaProSOXAgent) {
-        novaProAgent = new window.NovaProSOXAgent();
+      if (window.NovaProAgent) {
+        novaProAgent = new window.NovaProAgent();
         console.log('Nova Pro agent initialized for manual and automation');
       }
     } catch (error) {
@@ -1441,14 +1486,14 @@ ${idx + 1}. ${step.action.toUpperCase()}: ${step.description}
     }
   }
 
-  // Run SOX automation using workflow manager
-  async function runSOXAutomation() {
+  // Run automation using workflow manager
+  async function runAutomation() {
     if (!workflowManager) {
       addMessage('Workflow manager not available. Please refresh the extension.', 'assistant');
       return;
     }
     
-    addMessage('Starting Automatic SOX Evidence Collection...', 'assistant');
+    addMessage('Starting Automatic Evidence Collection...', 'assistant');
     
     try {
       // Run the first available workflow or default GitHub workflow
@@ -1482,7 +1527,7 @@ ${idx + 1}. ${step.action.toUpperCase()}: ${step.description}
     }
   }
   
-  // Add workflow button listener (replaces old SOX and Config buttons)
+  // Add workflow button listener
   const workflowBtn = document.getElementById('workflowButton');
   if (workflowBtn) {
     workflowBtn.addEventListener('click', showWorkflowInterface);
@@ -1663,9 +1708,9 @@ ${idx + 1}. ${step.action.toUpperCase()}: ${step.description}
     });
 
     configText += 'To edit workflows, modify the workflow-config.json file or use commands like:\n';
-    configText += '• "run workflow GitHub SOX Audit"\n';
+    configText += '• "run workflow GitHub Audit"\n';
     configText += '• "list workflows"\n';
-    configText += '• "show workflow steps GitHub SOX Audit"';
+    configText += '• "show workflow steps GitHub Audit"';
 
     addMessage(configText, 'assistant');
   }

@@ -1,5 +1,5 @@
-// Nova Pro SOX Agent for Chrome Extension
-class NovaProSOXAgent {
+// Nova Pro Agent for Chrome Extension
+class NovaProAgent {
   constructor() {
     this.isInitialized = false;
   }
@@ -185,4 +185,4 @@ class NovaProSOXAgent {
 }
 
 // Export for use in sidepanel
-window.NovaProSOXAgent = NovaProSOXAgent;
+window.NovaProAgent = NovaProAgent;

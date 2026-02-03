@@ -1,5 +1,5 @@
-// Nova Pro SOX Agent for Firefox Extension
-class NovaProSOXAgent {
+// Nova Pro Agent for Firefox Extension
+class NovaProAgent {
   constructor() {
     this.isInitialized = false;
   }
@@ -185,4 +185,4 @@ class NovaProSOXAgent {
 }
 
 // Export for use in sidebar
-window.NovaProSOXAgent = NovaProSOXAgent;
+window.NovaProAgent = NovaProAgent;

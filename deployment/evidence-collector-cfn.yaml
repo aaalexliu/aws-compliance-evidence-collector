@@ -1,7 +1,13 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Evidence Collector Browser Extension - Based on Nova Sonic Infrastructure'
+Description: 'Evidence Collector Browser Extension - Unified template for Chrome, Firefox, or Both'
 
 Parameters:
+  BrowserType:
+    Type: String
+    Default: Both
+    AllowedValues: [Chrome, Firefox, Both]
+    Description: 'Select which browser extension(s) to support'
+
   Environment:
     Type: String
     Default: dev
@@ -24,6 +30,11 @@ Parameters:
     Type: String
     Description: 'S3 bucket name for evidence storage'
     Default: 'evidence-collector-bucket'
+
+Conditions:
+  IsChrome: !Equals [!Ref BrowserType, Chrome]
+  IsFirefox: !Equals [!Ref BrowserType, Firefox]
+  IsBoth: !Equals [!Ref BrowserType, Both]
 
 Resources:
   # ======================================== 
@@ -202,7 +213,13 @@ Resources:
         CorsRules:
           - AllowedHeaders: ['*']
             AllowedMethods: [GET, HEAD, PUT]
-            AllowedOrigins: ['moz-extension://*']
+            AllowedOrigins: !If 
+              - IsBoth
+              - ['chrome-extension://*', 'moz-extension://*']
+              - !If
+                - IsChrome
+                - ['chrome-extension://*']
+                - ['moz-extension://*']
             MaxAge: 3600
       Tags:
         - Key: Environment
@@ -488,7 +505,7 @@ Resources:
             "workflows": [
               {
                 "name": "GitHub Access Review",
-                "description": "Review GitHub developer access for SOX compliance",
+                "description": "Review GitHub developer access for compliance",
                 "steps": [
                   {
                     "action": "navigate",
@@ -784,6 +801,18 @@ Outputs:
     Description: AWS Region
     Value: !Ref AWS::Region
 
+  BrowserType:
+    Description: Selected browser type for CORS configuration
+    Value: !Ref BrowserType
+
   SetupInstructions:
     Description: Next Steps
-    Value: 'Check email for temporary password, configure Firefox extension with output values, login with AppUser'
+    Value: !Sub 
+      - 'Check email for temporary password, configure ${Browser} with output values, login with AppUser'
+      - Browser: !If
+        - IsBoth
+        - 'Chrome and/or Firefox extension'
+        - !If
+          - IsChrome
+          - 'Chrome extension'
+          - 'Firefox extension'

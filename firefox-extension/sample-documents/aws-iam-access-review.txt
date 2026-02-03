@@ -1,7 +1,7 @@
-AWS IAM Access Review Procedure for SOX Compliance
+AWS IAM Access Review Procedure for Compliance
 
 Purpose:
-This procedure outlines the quarterly access review process for AWS Identity and Access Management (IAM) to ensure compliance with SOX requirements for access controls and segregation of duties.
+This procedure outlines the quarterly access review process for AWS Identity and Access Management (IAM) to ensure compliance with requirements for access controls and segregation of duties.
 
 Scope:
 This review covers all IAM users and roles with access to production AWS environments that handle financial data or systems.
@@ -37,7 +37,7 @@ Review Criteria:
 - Check for any roles with overly permissive policies
 
 Documentation:
-All screenshots and findings must be documented in the quarterly access review report and retained for audit purposes for a minimum of 7 years per SOX requirements.
+All screenshots and findings must be documented in the quarterly access review report and retained for audit purposes for a minimum of 7 years per requirements.
 
 Approval:
 The completed review must be approved by the IT Security Manager and submitted to the Internal Audit team within 5 business days of completion.
