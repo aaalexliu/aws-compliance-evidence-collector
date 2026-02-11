@@ -1,3 +1,6 @@
+// Import S3 helper
+import { uploadToS3, downloadFromS3, listS3Objects } from './s3-helper.js';
+
 // Workflow Configuration Manager
 class WorkflowManager {
   constructor() {

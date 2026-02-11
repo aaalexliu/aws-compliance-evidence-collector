@@ -20,11 +20,11 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["core/content.js"]
+      "js": ["content.bundle.js"]
     }
   ],
   "background": {
-    "scripts": ["core/background.js"],
+    "scripts": ["background.bundle.js"],
     "persistent": false
   },
   "web_accessible_resources": [

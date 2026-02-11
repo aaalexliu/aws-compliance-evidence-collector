@@ -1,4 +1,6 @@
 // Evidence Collector Tools
+import { getCachedUserEmail } from './cognito-helper.js';
+
 class EvidenceTools {
   constructor(components) {
     this.components = components;
@@ -762,28 +764,9 @@ class EvidenceTools {
       
       // Get config and user email
       const config = await chrome.storage.local.get(['cognitoConfig']);
-      const session = await chrome.storage.session.get(['userEmail', 'accessToken']);
       
-      // Get user email if not cached
-      let userEmail = session.userEmail;
-      if (!userEmail && session.accessToken) {
-        try {
-          const userUrl = `https://cognito-idp.${config.cognitoConfig.region}.amazonaws.com/`;
-          const response = await fetch(userUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-amz-json-1.1',
-              'X-Amz-Target': 'AWSCognitoIdentityProviderService.GetUser'
-            },
-            body: JSON.stringify({ AccessToken: session.accessToken })
-          });
-          const userData = await response.json();
-          const emailAttr = userData.UserAttributes?.find(attr => attr.Name === 'email');
-          userEmail = emailAttr?.Value;
-        } catch (error) {
-          console.error('Failed to get user email:', error);
-        }
-      }
+      // Get user email using AWS SDK helper
+      let userEmail = await getCachedUserEmail();
       
       // Validate recipient email
       if (!input.recipientEmail) {

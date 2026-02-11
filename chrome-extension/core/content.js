@@ -39,7 +39,17 @@ class DOMAutomation {
 
   // Smart element finder combining multiple strategies
   findElement(description) {
-    const words = description.toLowerCase().split(' ');
+    const descLower = description.toLowerCase();
+    
+    // Check for ordinal references (first, second, 1st, 2nd, etc.)
+    const ordinalMatch = this.parseOrdinal(descLower);
+    
+    if (ordinalMatch) {
+      return this.findByOrdinal(ordinalMatch.position, ordinalMatch.elementType, descLower);
+    }
+    
+    // Original text-based matching
+    const words = descLower.split(' ');
     let candidates = [];
 
     // Strategy 1: Find by text content
@@ -53,21 +63,116 @@ class DOMAutomation {
     }
 
     // Strategy 3: Common UI patterns
-    if (description.includes('profile') || description.includes('account')) {
+    if (descLower.includes('profile') || descLower.includes('account')) {
       candidates.push(...document.querySelectorAll('[class*="profile"], [class*="account"], [class*="user"], [aria-label*="profile" i], [aria-label*="account" i]'));
     }
     
-    if (description.includes('settings')) {
+    if (descLower.includes('settings')) {
       candidates.push(...document.querySelectorAll('[class*="settings"], [aria-label*="settings" i], [href*="settings"]'));
     }
 
-    if (description.includes('menu') || description.includes('dropdown')) {
+    if (descLower.includes('menu') || descLower.includes('dropdown')) {
       candidates.push(...document.querySelectorAll('[class*="menu"], [class*="dropdown"], [role="menu"], [aria-haspopup="true"]'));
     }
 
     // Remove duplicates and score by relevance
     const unique = [...new Set(candidates)];
     return this.scoreElements(unique, description);
+  }
+
+  // Parse ordinal references from description
+  parseOrdinal(description) {
+    // Match patterns like: "first link", "2nd button", "third result", "1st search result"
+    const ordinalPatterns = [
+      /(\d+)(?:st|nd|rd|th)\s+(\w+)/i,  // 1st link, 2nd button, 3rd result
+      /(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+(\w+)/i  // first link, second button
+    ];
+    
+    for (const pattern of ordinalPatterns) {
+      const match = description.match(pattern);
+      if (match) {
+        let position;
+        const positionStr = match[1].toLowerCase();
+        
+        // Convert word to number
+        const wordToNum = {
+          'first': 1, 'second': 2, 'third': 3, 'fourth': 4, 'fifth': 5,
+          'sixth': 6, 'seventh': 7, 'eighth': 8, 'ninth': 9, 'tenth': 10
+        };
+        
+        position = wordToNum[positionStr] || parseInt(positionStr);
+        
+        if (position && match[2]) {
+          return {
+            position: position,
+            elementType: match[2].toLowerCase()
+          };
+        }
+      }
+    }
+    
+    return null;
+  }
+
+  // Find element by ordinal position
+  findByOrdinal(position, elementType, fullDescription) {
+    let selector = '*';
+    
+    // Map common element types to selectors
+    const typeMap = {
+      'link': 'a',
+      'links': 'a',
+      'button': 'button, [role="button"], input[type="button"], input[type="submit"]',
+      'buttons': 'button, [role="button"], input[type="button"], input[type="submit"]',
+      'result': '[class*="result"], [class*="item"], li',
+      'results': '[class*="result"], [class*="item"], li',
+      'item': 'li, [class*="item"]',
+      'items': 'li, [class*="item"]',
+      'input': 'input, textarea',
+      'field': 'input, textarea',
+      'image': 'img',
+      'heading': 'h1, h2, h3, h4, h5, h6',
+      'paragraph': 'p',
+      'div': 'div',
+      'span': 'span'
+    };
+    
+    selector = typeMap[elementType] || elementType;
+    
+    // Special handling for "search result" - look for common search result patterns
+    if (fullDescription.includes('search result')) {
+      // Google-specific: target main search results, skip header/footer/ads
+      selector = '#search a[href]:not([role="button"]), .g a[href], [data-sokoban-container] a[href], #rso a[href]';
+    }
+    
+    // Get all matching elements
+    const elements = Array.from(document.querySelectorAll(selector));
+    
+    // Filter to visible elements only
+    const visibleElements = elements.filter(el => {
+      const style = window.getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.display !== 'none' && 
+             style.visibility !== 'hidden' && 
+             style.opacity !== '0' &&
+             rect.width > 0 && 
+             rect.height > 0;
+    });
+    
+    // Return the Nth element (position is 1-indexed)
+    if (visibleElements.length >= position) {
+      const element = visibleElements[position - 1];
+      const text = (element.textContent || element.value || element.getAttribute('aria-label') || '').trim();
+      
+      return [{
+        element: element,
+        score: 100, // High score for ordinal match
+        text: text.substring(0, 100)
+      }];
+    }
+    
+    // If not found, return empty array
+    return [];
   }
 
   // Score elements by how well they match the description

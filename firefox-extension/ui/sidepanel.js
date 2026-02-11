@@ -1,3 +1,18 @@
+// Import all required modules so webpack bundles them
+import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
+import CognitoAuth from './auth-sdk.js';
+import '../core/tools.js';
+import '../core/workflow-manager.js';
+import '../core/nova-pro-agent.js';
+import '../core/text-similarity.js';
+
+// Make CognitoAuth globally available
+window.CognitoAuth = CognitoAuth;
+
+// Classes are made globally available by the imported modules
+// CognitoAuth, S3Manager, EvidenceTools, WorkflowManager, NovaProAgent
+
 document.addEventListener('DOMContentLoaded', async function() {
   // Initialize tools framework
   window.evidenceTools = new EvidenceTools({
@@ -43,520 +58,14 @@ document.addEventListener('DOMContentLoaded', async function() {
     userInfoElement.textContent = `Logged in as: ${currentUsername}`;
   }
 
-  // Import CognitoAuth class - Make it globally available
-  class CognitoAuth {
-    constructor() {
-      this.cognitoConfig = null;
-    }
-
-    async getCurrentPageInfo() {
-      try {
-        const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-        return `${tab.title} (${tab.url})`;
-      } catch (error) {
-        return 'Unknown page';
-      }
-    }
-
-    async callBedrockAPI(message) {
-      // Call real Nova Pro API using AWS SDK
-      console.log('Calling Nova Pro API for:', message);
-      
-      try {
-        const config = await browser.storage.local.get(['cognitoConfig']);
-        const session = await browser.storage.local.get(['credentials']);
-        
-        if (!session.credentials || !config.cognitoConfig) {
-          throw new Error('Not authenticated or config missing');
-        }
-
-        const credentials = session.credentials;
-        const region = config.cognitoConfig.region;
-        const s3BucketName = config.cognitoConfig.s3BucketName;
-        
-        // Fetch system prompt from S3 using AWS SDK
-        let systemPrompt;
-        try {
-          console.log('Fetching prompt from S3:', s3BucketName, 'config/prompts/compliance-assistant-prompt.txt');
-          
-          // Configure AWS SDK with Cognito credentials
-          AWS.config.update({
-            accessKeyId: credentials.AccessKeyId,
-            secretAccessKey: credentials.SecretKey,
-            sessionToken: credentials.SessionToken,
-            region: region
-          });
-
-          const s3 = new AWS.S3();
-          
-          const getParams = {
-            Bucket: s3BucketName,
-            Key: 'config/prompts/compliance-assistant-prompt.txt'
-          };
-          
-          const result = await s3.getObject(getParams).promise();
-          systemPrompt = result.Body.toString('utf-8');
-          console.log('Loaded system prompt from S3, length:', systemPrompt.length);
-        } catch (error) {
-          console.error('Failed to load prompt from S3:', error);
-          console.error('Bucket:', s3BucketName, 'Region:', region);
-          throw new Error('System prompt not available. Please ensure prompts are uploaded to S3.');
-        }
-        
-        // Prepare Bedrock request - Compliance-focused with tools for evidence collection
-        const requestBody = {
-          messages: [
-            {
-              role: "user",
-              content: [{ text: message }]
-            }
-          ],
-          inferenceConfig: {
-            maxTokens: 1000,
-            temperature: 0.1
-          },
-          system: [
-            {
-              text: systemPrompt
-            }
-          ]
-        };
-
-        // Add tools for compliance evidence collection
-        if (window.evidenceTools) {
-          const tools = window.evidenceTools.getTools();
-          if (tools.length > 0) {
-            requestBody.toolConfig = {
-              tools: tools.map(tool => ({
-                toolSpec: {
-                  name: tool.tool_name,
-                  description: tool.description,
-                  inputSchema: {
-                    json: JSON.parse(tool.inputSchema.json)
-                  }
-                }
-              }))
-            };
-          }
-        }
-
-        // Configure AWS SDK with Cognito credentials
-        AWS.config.update({
-          accessKeyId: credentials.AccessKeyId,
-          secretAccessKey: credentials.SecretKey,
-          sessionToken: credentials.SessionToken,
-          region: region
-        });
-
-        // Use AWS SDK's request signing directly (reverted to working version)
-        const endpoint = new AWS.Endpoint(`https://bedrock-runtime.${region}.amazonaws.com`);
-        
-        const request = new AWS.HttpRequest(endpoint, region);
-        request.method = 'POST';
-        request.path = '/model/amazon.nova-pro-v1:0/invoke';
-        request.body = JSON.stringify(requestBody);
-        request.headers['Content-Type'] = 'application/json';
-        request.headers['Host'] = endpoint.host;
-
-        // Sign the request using AWS SDK's signer
-        const signer = new AWS.Signers.V4(request, 'bedrock');
-        signer.addAuthorization(AWS.config.credentials, new Date());
-
-        // Make the request using fetch with signed headers
-        const response = await fetch(`https://${request.headers['Host']}${request.path}`, {
-          method: request.method,
-          headers: request.headers,
-          body: request.body
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Bedrock API error: ${response.status} - ${errorText}`);
-        }
-
-        const responseBody = await response.json();
-        console.log('=== NOVA PRO RESPONSE ===');
-        console.log(JSON.stringify(responseBody, null, 2));
-        
-        // Return full response for tool handling
-        return responseBody;
-        
-      } catch (error) {
-        console.error('Nova Pro API error:', error);
-        return `I'm having trouble connecting to Nova Pro right now. Error: ${error.message}`;
-      }
-    }
+  // Initialize S3Manager for chat logging (use window.S3Manager if available, otherwise create new)
+  if (typeof S3Manager !== 'undefined') {
+    s3Manager = new S3Manager();
+  } else if (window.S3Manager) {
+    s3Manager = new window.S3Manager();
+  } else {
+    console.error('S3Manager not available');
   }
-
-  // Make CognitoAuth globally available for Nova Pro agent
-  window.CognitoAuth = CognitoAuth;
-
-  // S3Manager class for screenshot uploads and chat logging
-  class S3Manager {
-    constructor() {
-      this.config = null;
-      this.credentials = null;
-      this.todayFolder = null;
-      this.sessionId = this.generateSessionId();
-    }
-
-    generateSessionId() {
-      return 'session-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-    }
-
-    async initialize() {
-      const config = await browser.storage.local.get(['cognitoConfig']);
-      const session = await browser.storage.local.get(['credentials']);
-      
-      this.config = config.cognitoConfig;
-      this.credentials = session.credentials;
-      
-      if (!this.config || !this.credentials) {
-        throw new Error('Configuration or credentials missing');
-      }
-
-      const today = new Date();
-      this.todayFolder = `evidence/${today.getFullYear()}/${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}`;
-      
-      return this.todayFolder;
-    }
-
-    sanitizeForFilename(text) {
-      // Convert to lowercase, replace spaces with hyphens, remove special chars
-      return text
-        .toLowerCase()
-        .replace(/\s+/g, '-')
-        .replace(/[^a-z0-9-]/g, '')
-        .substring(0, 50); // Limit length
-    }
-
-    generateFilename(url, stepDescription = 'screenshot', workflowName = null) {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const domain = new URL(url).hostname.replace(/[^a-zA-Z0-9]/g, '-');
-      const sanitizedDescription = this.sanitizeForFilename(stepDescription);
-      return `${timestamp}_${domain}_${sanitizedDescription}.png`;
-    }
-
-    async uploadScreenshot(screenshotBase64, url, stepDescription = 'screenshot', workflowName = null) {
-      await this.initialize();
-      
-      // Build path with workflow folder if provided
-      let uploadPath = this.todayFolder;
-      if (workflowName) {
-        const sanitizedWorkflow = this.sanitizeForFilename(workflowName);
-        uploadPath = `${uploadPath}/${sanitizedWorkflow}`;
-      }
-      
-      const filename = this.generateFilename(url, stepDescription, workflowName);
-      const key = `${uploadPath}/${filename}`;
-      
-      // Remove data URL prefix if present
-      let base64Data = screenshotBase64.replace(/^data:image\/[a-zA-Z]*;base64,/, '');
-      
-      // Validate base64 string
-      if (!base64Data || base64Data === screenshotBase64) {
-        throw new Error('Invalid data URL format - missing base64 prefix');
-      }
-      
-      // Convert to Uint8Array for AWS SDK
-      let byteArray;
-      try {
-        const byteCharacters = atob(base64Data);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-          byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        byteArray = new Uint8Array(byteNumbers);
-      } catch (base64Error) {
-        throw new Error(`Base64 decode error: ${base64Error.message}. Data URL length: ${screenshotBase64.length}`);
-      }
-
-      try {
-        console.log('Using AWS SDK for S3 upload:', {
-          bucket: this.config.s3BucketName,
-          key: key,
-          region: this.config.region
-        });
-
-        // Configure AWS SDK with Cognito credentials (reverted to working version)
-        AWS.config.update({
-          accessKeyId: this.credentials.AccessKeyId,
-          secretAccessKey: this.credentials.SecretKey,
-          sessionToken: this.credentials.SessionToken,
-          region: this.config.region
-        });
-
-        // Create S3 service object
-        const s3 = new AWS.S3();
-
-        // Upload parameters
-        const uploadParams = {
-          Bucket: this.config.s3BucketName,
-          Key: key,
-          Body: byteArray,
-          ContentType: 'image/png'
-        };
-
-        // Upload to S3
-        const result = await s3.upload(uploadParams).promise();
-        
-        console.log('S3 upload successful:', result.Location);
-
-        return {
-          success: true,
-          url: result.Location,
-          key: key,
-          filename: filename
-        };
-
-      } catch (error) {
-        console.error('S3 Upload error message:', error.message);
-        console.error('S3 Upload bucket:', this.config?.s3BucketName);
-        console.error('S3 Upload region:', this.config?.region);
-        console.error('S3 Upload hasCredentials:', !!this.credentials);
-        console.error('S3 Upload full error:', error);
-        throw new Error(`S3 upload error: ${error.message}`);
-      }
-    }
-
-    async saveChatToS3(chatHistory, username) {
-      await this.initialize();
-      
-      const filename = `chat-evidence-${username}-${this.sessionId}.json`;
-      const key = `${this.todayFolder}/chat-logs/${filename}`;
-      
-      const chatData = {
-        sessionId: this.sessionId,
-        user: username,
-        lastUpdated: new Date().toISOString(),
-        chatHistory: chatHistory,
-        metadata: {
-          browser: 'Chrome',
-          extension_version: '1.0',
-          compliance_context: 'evidence_collection',
-          session_start: this.sessionStartTime || new Date().toISOString()
-        }
-      };
-      
-      try {
-        const s3 = new AWS.S3();
-        
-        const uploadParams = {
-          Bucket: this.config.s3BucketName,
-          Key: key,
-          Body: JSON.stringify(chatData, null, 2),
-          ContentType: 'application/json',
-          ServerSideEncryption: 'AES256'
-        };
-        
-        const result = await s3.upload(uploadParams).promise();
-        console.log('Chat saved to S3:', result.Location);
-        
-        return { filename, s3Url: result.Location };
-      } catch (error) {
-        console.error('Chat save error:', error);
-        throw new Error(`Failed to save chat: ${error.message}`);
-      }
-    }
-
-    async saveWorkflowLog(workflowLog) {
-      await this.initialize();
-      
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const sanitizedWorkflow = this.sanitizeForFilename(workflowLog.workflowName);
-      const filename = `workflow-${sanitizedWorkflow}-${workflowLog.username}-${timestamp}.json`;
-      const key = `chat-logs/${this.todayFolder.split('/').slice(1).join('/')}/${filename}`;
-      
-      try {
-        // Configure AWS SDK
-        AWS.config.update({
-          accessKeyId: this.credentials.AccessKeyId,
-          secretAccessKey: this.credentials.SecretKey,
-          sessionToken: this.credentials.SessionToken,
-          region: this.config.region
-        });
-
-        const s3 = new AWS.S3();
-        
-        const uploadParams = {
-          Bucket: this.config.s3BucketName,
-          Key: key,
-          Body: JSON.stringify(workflowLog, null, 2),
-          ContentType: 'application/json'
-        };
-
-        const result = await s3.upload(uploadParams).promise();
-        console.log('Workflow log saved to S3:', result.Location);
-        
-        return { filename, s3Url: result.Location };
-      } catch (error) {
-        console.error('Workflow log save error:', error);
-        throw new Error(`Failed to save workflow log: ${error.message}`);
-      }
-    }
-
-    async saveReport(reportHTML, workflowName) {
-      await this.initialize();
-      
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const sanitizedWorkflow = this.sanitizeForFilename(workflowName);
-      const filename = `${sanitizedWorkflow}-report-${timestamp}.html`;
-      
-      // Create reports folder structure: reports/YYYY/MM/DD/
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(now.getDate()).padStart(2, '0');
-      const key = `reports/${year}/${month}/${day}/${filename}`;
-      
-      try {
-        // Configure AWS SDK
-        AWS.config.update({
-          accessKeyId: this.credentials.AccessKeyId,
-          secretAccessKey: this.credentials.SecretKey,
-          sessionToken: this.credentials.SessionToken,
-          region: this.config.region
-        });
-
-        const s3 = new AWS.S3();
-        
-        const uploadParams = {
-          Bucket: this.config.s3BucketName,
-          Key: key,
-          Body: reportHTML,
-          ContentType: 'text/html'
-        };
-
-        const result = await s3.upload(uploadParams).promise();
-        console.log('Report saved to S3:', result.Location);
-        
-        return result.Location;
-      } catch (error) {
-        console.error('Report save error:', error);
-        throw new Error(`Failed to save report: ${error.message}`);
-      }
-    }
-
-    async loadWorkflowsFromS3() {
-      await this.initialize();
-      
-      const key = 'config/workflows/user-workflows.json';
-      
-      try {
-        // Configure AWS SDK
-        AWS.config.update({
-          accessKeyId: this.credentials.AccessKeyId,
-          secretAccessKey: this.credentials.SecretKey,
-          sessionToken: this.credentials.SessionToken,
-          region: this.config.region
-        });
-
-        const s3 = new AWS.S3();
-        
-        const getParams = {
-          Bucket: this.config.s3BucketName,
-          Key: key
-        };
-
-        const result = await s3.getObject(getParams).promise();
-        const workflows = JSON.parse(result.Body.toString('utf-8'));
-        console.log('Workflows loaded from S3:', workflows.length);
-        
-        return workflows;
-      } catch (error) {
-        if (error.code === 'NoSuchKey') {
-          console.log('No workflows found in S3 (first time use)');
-          return null; // First time use
-        }
-        console.error('Failed to load workflows from S3:', error);
-        throw error;
-      }
-    }
-
-    async saveWorkflowsToS3(workflows) {
-      await this.initialize();
-      
-      const key = 'config/workflows/user-workflows.json';
-      
-      try {
-        // Configure AWS SDK
-        AWS.config.update({
-          accessKeyId: this.credentials.AccessKeyId,
-          secretAccessKey: this.credentials.SecretKey,
-          sessionToken: this.credentials.SessionToken,
-          region: this.config.region
-        });
-
-        const s3 = new AWS.S3();
-        
-        // Create backup of existing workflows before overwriting
-        try {
-          await this.createWorkflowBackup(s3);
-        } catch (backupError) {
-          console.warn('Failed to create backup (file may not exist yet):', backupError.message);
-          // Continue with save even if backup fails (e.g., first time save)
-        }
-        
-        const uploadParams = {
-          Bucket: this.config.s3BucketName,
-          Key: key,
-          Body: JSON.stringify(workflows, null, 2),
-          ContentType: 'application/json'
-        };
-
-        const result = await s3.upload(uploadParams).promise();
-        console.log('Workflows saved to S3:', result.Location);
-        
-        return { success: true, location: result.Location };
-      } catch (error) {
-        console.error('Failed to save workflows to S3:', error);
-        throw new Error(`Failed to save workflows: ${error.message}`);
-      }
-    }
-
-    async createWorkflowBackup(s3) {
-      const sourceKey = 'config/workflows/user-workflows.json';
-      
-      try {
-        // Get existing workflows file
-        const getParams = {
-          Bucket: this.config.s3BucketName,
-          Key: sourceKey
-        };
-        
-        const existingFile = await s3.getObject(getParams).promise();
-        
-        // Create timestamp for backup filename
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5); // YYYY-MM-DDTHH-MM-SS
-        const backupKey = `config/workflows/backups/user-workflows-${timestamp}.json`;
-        
-        // Save backup
-        const backupParams = {
-          Bucket: this.config.s3BucketName,
-          Key: backupKey,
-          Body: existingFile.Body,
-          ContentType: 'application/json'
-        };
-        
-        await s3.upload(backupParams).promise();
-        console.log('✅ Workflow backup created:', backupKey);
-        
-      } catch (error) {
-        // If file doesn't exist (NoSuchKey), it's likely the first save
-        if (error.code === 'NoSuchKey') {
-          console.log('No existing workflows to backup (first time save)');
-        } else {
-          throw error;
-        }
-      }
-    }
-  }
-
-  // Make S3Manager globally accessible for tools
-  window.S3Manager = S3Manager;
-
-  // Initialize S3Manager for chat logging
-  s3Manager = new S3Manager();
 
   // Screenshot stitching function
   async function stitchScreenshots(screenshots, pageInfo) {
@@ -792,8 +301,49 @@ document.addEventListener('DOMContentLoaded', async function() {
   async function generateWorkflowReport(workflowName, logData) {
     addMessage('🤖 Analyzing workflow execution...', 'assistant');
     
+    // Get config and credentials for S3 access
+    const config = await browser.storage.local.get(['cognitoConfig']);
+    const session = await browser.storage.local.get(['credentials']);
+    
+    if (!config.cognitoConfig || !session.credentials) {
+      throw new Error('Configuration or credentials not found');
+    }
+    
+    const region = config.cognitoConfig.region;
+    const s3BucketName = config.cognitoConfig.s3BucketName;
+    const credentials = session.credentials;
+    
+    // Fetch report analysis prompt from S3
+    let reportPromptTemplate;
+    try {
+      console.log('Fetching report analysis prompt from S3');
+      
+      // Use AWS SDK v3
+      const s3Client = new S3Client({
+        region: region,
+        credentials: {
+          accessKeyId: credentials.AccessKeyId,
+          secretAccessKey: credentials.SecretKey,
+          sessionToken: credentials.SessionToken
+        }
+      });
+
+      const command = new GetObjectCommand({
+        Bucket: s3BucketName,
+        Key: 'config/prompts/report-analysis-prompt.txt'
+      });
+      
+      const result = await s3Client.send(command);
+      const bodyContents = await result.Body.transformToString();
+      reportPromptTemplate = bodyContents;
+      console.log('Loaded report analysis prompt from S3');
+    } catch (error) {
+      console.error('Failed to load prompt from S3:', error);
+      throw new Error('Report analysis prompt not available. Please ensure prompts are uploaded to S3.');
+    }
+    
     // Prepare workflow summary for Nova Pro
-    const workflowSummary = `
+    const workflowData = `
 Workflow: ${logData.workflowName}
 User: ${logData.username}
 Start Time: ${new Date(logData.startTime).toLocaleString()}
@@ -808,19 +358,10 @@ ${idx + 1}. ${step.action.toUpperCase()}: ${step.description}
    Duration: ${step.endTime ? Math.round((new Date(step.endTime) - new Date(step.startTime)) / 1000) : 'N/A'} seconds
    ${step.error ? `Error: ${step.error}` : ''}
 `).join('\n')}
-
-Please analyze this workflow execution and provide:
-1. Executive Summary (2-3 sentences about what was accomplished)
-2. Key Findings (any issues, successes, or notable observations)
-3. Compliance Status (whether all steps completed successfully)
-4. Recommendations (any suggestions for improvement)
-
-Format your response as:
-EXECUTIVE_SUMMARY: [your summary]
-KEY_FINDINGS: [your findings]
-COMPLIANCE_STATUS: [status]
-RECOMMENDATIONS: [your recommendations]
 `;
+
+    // Replace placeholder with actual workflow data
+    const workflowSummary = reportPromptTemplate.replace('{{WORKFLOW_DATA}}', workflowData);
 
     // Get Nova Pro analysis
     const analysis = await novaProAgent.simpleChat(workflowSummary);
@@ -922,18 +463,17 @@ RECOMMENDATIONS: [your recommendations]
     const emailSubject = `Evidence Report: ${workflowName}`;
     const emailBody = reportHTML;
     
-    // Send via SES
-    const AWS_SDK = window.AWS;
-    AWS_SDK.config.update({
-      accessKeyId: session.credentials.AccessKeyId,
-      secretAccessKey: session.credentials.SecretKey,
-      sessionToken: session.credentials.SessionToken,
-      region: config.cognitoConfig.region
+    // Send via SES using AWS SDK v3
+    const sesClient = new SESClient({
+      region: config.cognitoConfig.region,
+      credentials: {
+        accessKeyId: session.credentials.AccessKeyId,
+        secretAccessKey: session.credentials.SecretKey,
+        sessionToken: session.credentials.SessionToken
+      }
     });
     
-    const ses = new AWS_SDK.SES();
-    
-    const params = {
+    const command = new SendEmailCommand({
       Source: userEmail || finalRecipient,
       Destination: {
         ToAddresses: [finalRecipient]
@@ -950,9 +490,9 @@ RECOMMENDATIONS: [your recommendations]
           }
         }
       }
-    };
+    });
     
-    await ses.sendEmail(params).promise();
+    await sesClient.send(command);
     
     addMessage(`✅ Report emailed to: ${finalRecipient}`, 'assistant');
   }
@@ -1400,7 +940,20 @@ RECOMMENDATIONS: [your recommendations]
     try {
       // Use Nova Pro for all chat interactions
       addMessage('Agent is thinking...', 'assistant');
-      const result = await novaProAgent.handleManualChat(message);
+      
+      // Convert chatHistory to Bedrock format (only last 10 messages to avoid token limits)
+      // Filter to ensure conversation starts with user message and alternates properly
+      let recentHistory = chatHistory.slice(-10).map(msg => ({
+        role: msg.role === 'user' ? 'user' : 'assistant',
+        content: msg.content
+      }));
+      
+      // Ensure first message is from user (Bedrock requirement)
+      while (recentHistory.length > 0 && recentHistory[0].role !== 'user') {
+        recentHistory.shift();
+      }
+      
+      const result = await novaProAgent.handleManualChat(message, recentHistory);
       
       // Replace the "thinking" message with actual response
       const messages = chatArea.querySelectorAll('.message.assistant');
@@ -1496,7 +1049,7 @@ RECOMMENDATIONS: [your recommendations]
     }
   }
   
-  // Add workflow button listener 
+  // Add workflow button listener
   const workflowBtn = document.getElementById('workflowButton');
   if (workflowBtn) {
     workflowBtn.addEventListener('click', showWorkflowInterface);
@@ -1992,8 +1545,8 @@ RECOMMENDATIONS: [your recommendations]
   const logoutButton = document.getElementById('logoutButton');
   if (logoutButton) {
     logoutButton.addEventListener('click', async () => {
-      // Only clear credentials, keep configuration
-      await browser.storage.local.remove(['credentials', 'username', 'userEmail', 'accessToken']);
+      // Clear only authentication data, keep cognitoConfig
+      await browser.storage.local.remove(['credentials', 'username', 'accessToken', 'idToken']);
       window.location.href = 'auth.html';
     });
   }

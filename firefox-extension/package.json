@@ -1,0 +1,24 @@
+{
+  "name": "compliance-evidence-collector-firefox",
+  "version": "1.0.0",
+  "description": "AI-powered compliance evidence collection for Firefox",
+  "scripts": {
+    "build": "webpack --mode production",
+    "watch": "webpack --mode development --watch"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.709.0",
+    "@aws-sdk/client-cognito-identity": "^3.709.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.709.0",
+    "@aws-sdk/client-s3": "^3.709.0",
+    "@aws-sdk/client-ses": "^3.709.0"
+  },
+  "devDependencies": {
+    "webpack": "^5.105.0",
+    "webpack-cli": "^6.0.1",
+    "copy-webpack-plugin": "^12.0.2",
+    "buffer": "^6.0.3",
+    "process": "^0.11.10",
+    "stream-browserify": "^3.0.0"
+  }
+}

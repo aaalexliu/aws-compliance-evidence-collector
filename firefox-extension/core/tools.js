@@ -1,4 +1,6 @@
-// Evidence Collector Tools (Firefox version)
+// Evidence Collector Tools
+import { getCachedUserEmail } from './cognito-helper.js';
+
 class EvidenceTools {
   constructor(components) {
     this.components = components;
@@ -218,8 +220,7 @@ class EvidenceTools {
     console.log(`Tool::Script::${toolName} executed with input:`, input);
 
     try {
-      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-      const tab = tabs[0];
+      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
       
       // Retry logic for screenshot capture
       let screenshot;
@@ -299,13 +300,95 @@ class EvidenceTools {
     }
   }
 
+
+
+  async captureFullPage(tabId, pageInfo) {
+    const viewportHeight = pageInfo.viewportHeight;
+    const fullHeight = pageInfo.fullHeight;
+    const screenshots = [];
+    
+    // Reset scroll to top
+    await browser.scripting.executeScript({
+      target: { tabId },
+      func: () => window.scrollTo(0, 0)
+    });
+    
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    let currentScroll = 0;
+    
+    // Capture all viewport sections
+    while (currentScroll < fullHeight) {
+      const screenshot = await browser.tabs.captureVisibleTab(null, { format: 'png' });
+      screenshots.push({
+        dataUrl: screenshot,
+        scrollY: currentScroll
+      });
+      
+      currentScroll += viewportHeight;
+      
+      if (currentScroll < fullHeight) {
+        await browser.scripting.executeScript({
+          target: { tabId },
+          func: (scrollY) => window.scrollTo(0, scrollY),
+          args: [Math.min(currentScroll, fullHeight - viewportHeight)]
+        });
+        
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+    
+    // Reset scroll to top
+    await browser.scripting.executeScript({
+      target: { tabId },
+      func: () => window.scrollTo(0, 0)
+    });
+    
+    // Stitch images together using Canvas
+    return await this.stitchScreenshots(screenshots, viewportHeight, fullHeight);
+  }
+
+  async stitchScreenshots(screenshots, viewportHeight, fullHeight) {
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      // Set canvas size to full page dimensions
+      canvas.width = window.screen.width; // Approximate viewport width
+      canvas.height = fullHeight;
+      
+      let loadedImages = 0;
+      const images = [];
+      
+      screenshots.forEach((screenshot, index) => {
+        const img = new Image();
+        img.onload = () => {
+          images[index] = img;
+          loadedImages++;
+          
+          if (loadedImages === screenshots.length) {
+            // Draw all images onto canvas
+            images.forEach((img, i) => {
+              const yPosition = i * viewportHeight;
+              ctx.drawImage(img, 0, yPosition);
+            });
+            
+            // Convert canvas to data URL
+            const stitchedDataUrl = canvas.toDataURL('image/png');
+            resolve(stitchedDataUrl);
+          }
+        };
+        img.src = screenshot.dataUrl;
+      });
+    });
+  }
+
   async clickElement(args) {
     const { input, toolName } = args;
     console.log(`Tool::Script::${toolName} executed with input:`, input);
 
     try {
-      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-      const tab = tabs[0];
+      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
       
       const response = await browser.tabs.sendMessage(tab.id, {
         action: 'clickElement',
@@ -339,8 +422,7 @@ class EvidenceTools {
     try {
       // Navigate to GitHub search
       const searchUrl = `https://github.com/search?q=${encodeURIComponent(input.query)}&type=repositories`;
-      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-      const tab = tabs[0];
+      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
       await browser.tabs.update(tab.id, { url: searchUrl });
 
       // Wait for page to load, then get repository options
@@ -398,8 +480,7 @@ class EvidenceTools {
       }
 
       // Update current tab
-      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-      const tab = tabs[0];
+      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
       await browser.tabs.update(tab.id, { url: url });
 
       return JSON.stringify({
@@ -422,8 +503,7 @@ class EvidenceTools {
 
     try {
       // Send message to content script to search for elements
-      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-      const tab = tabs[0];
+      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
       
       const response = await browser.tabs.sendMessage(tab.id, {
         action: 'searchElements',
@@ -469,8 +549,7 @@ class EvidenceTools {
     console.log(`Tool::Script::${toolName} executed`);
 
     try {
-      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-      const tab = tabs[0];
+      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
       
       const response = await browser.tabs.sendMessage(tab.id, {
         action: 'showCheckboxes'
@@ -505,8 +584,7 @@ class EvidenceTools {
     console.log(`Tool::Script::${toolName} executed with input:`, input);
 
     try {
-      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-      const tab = tabs[0];
+      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
       
       const response = await browser.tabs.sendMessage(tab.id, {
         action: 'selectCheckbox',
@@ -535,13 +613,13 @@ class EvidenceTools {
     console.log(`Tool::Script::${toolName} executed with input:`, input);
 
     try {
-      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-      const tab = tabs[0];
+      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
       
       // Try to inject content script if not already present
       try {
-        await browser.tabs.executeScript(tab.id, {
-          file: 'core/content.js'
+        await browser.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['content.js']
         });
       } catch (e) {
         // Content script might already be injected, continue
@@ -578,8 +656,7 @@ class EvidenceTools {
     console.log(`Tool::Script::${toolName} executed with input:`, input);
 
     try {
-      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-      const tab = tabs[0];
+      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
       
       const response = await browser.tabs.sendMessage(tab.id, {
         action: 'scrollPage',
@@ -610,8 +687,7 @@ class EvidenceTools {
   // Interactive workflow tools
   static async clickElement(input) {
     try {
-      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-      const tab = tabs[0];
+      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
       
       const response = await browser.tabs.sendMessage(tab.id, {
         action: 'clickElement',
@@ -633,8 +709,7 @@ class EvidenceTools {
 
   static async selectCheckbox(input) {
     try {
-      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-      const tab = tabs[0];
+      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
       
       const response = await browser.tabs.sendMessage(tab.id, {
         action: 'selectCheckbox',
@@ -661,7 +736,7 @@ class EvidenceTools {
     const { input } = args;
     try {
       // Get active report from browser.storage
-      const storage = await browser.storage.session.get(['activeWorkflowReport', 'credentials']);
+      const storage = await browser.storage.local.get(['activeWorkflowReport', 'credentials']);
       const activeReport = storage.activeWorkflowReport;
       const credentials = storage.credentials;
       
@@ -689,28 +764,9 @@ class EvidenceTools {
       
       // Get config and user email
       const config = await browser.storage.local.get(['cognitoConfig']);
-      const session = await browser.storage.session.get(['userEmail', 'accessToken']);
       
-      // Get user email if not cached
-      let userEmail = session.userEmail;
-      if (!userEmail && session.accessToken) {
-        try {
-          const userUrl = `https://cognito-idp.${config.cognitoConfig.region}.amazonaws.com/`;
-          const response = await fetch(userUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-amz-json-1.1',
-              'X-Amz-Target': 'AWSCognitoIdentityProviderService.GetUser'
-            },
-            body: JSON.stringify({ AccessToken: session.accessToken })
-          });
-          const userData = await response.json();
-          const emailAttr = userData.UserAttributes?.find(attr => attr.Name === 'email');
-          userEmail = emailAttr?.Value;
-        } catch (error) {
-          console.error('Failed to get user email:', error);
-        }
-      }
+      // Get user email using AWS SDK helper
+      let userEmail = await getCachedUserEmail();
       
       // Validate recipient email
       if (!input.recipientEmail) {
@@ -764,5 +820,5 @@ class EvidenceTools {
   }
 }
 
-// Export for use in sidebar
+// Export for use in sidepanel
 window.EvidenceTools = EvidenceTools;

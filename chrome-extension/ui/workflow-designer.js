@@ -1,11 +1,24 @@
+// Import AWS SDK v3 modules
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import CognitoAuth from './auth-sdk.js';
+
+console.log('Workflow Designer: Script loaded with AWS SDK v3');
+
 // Workflow Designer functionality
 let selectedFile = null;
 let generatedWorkflow = null;
 
+console.log('Workflow Designer: Variables initialized');
+
 document.addEventListener('DOMContentLoaded', async function() {
+    console.log('Workflow Designer: DOMContentLoaded fired');
+    
     // Check authentication
     const session = await chrome.storage.session.get(['credentials', 'username']);
+    console.log('Session check:', session);
+    
     if (!session.credentials) {
+        console.log('No credentials, redirecting to auth');
         window.location.href = 'auth.html';
         return;
     }
@@ -13,6 +26,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Check if in edit mode
     const editSession = await chrome.storage.session.get(['editingWorkflow', 'editMode']);
     if (editSession.editMode && editSession.editingWorkflow) {
+        console.log('Edit mode detected');
         // Load workflow for editing
         loadWorkflowForEditing(editSession.editingWorkflow);
         // Clear edit mode from session
@@ -20,17 +34,43 @@ document.addEventListener('DOMContentLoaded', async function() {
         return;
     }
 
+    console.log('Setting up file upload handlers');
     // Setup file upload handlers
     setupFileUpload();
     
     // Restore workflow if returning from test mode
     restoreWorkflowFromTestMode();
     
+    console.log('Adding event listeners');
     // Add event listeners
-    document.getElementById('generateButton').addEventListener('click', generateWorkflow);
-    document.getElementById('fileUploadArea').addEventListener('click', () => {
-        document.getElementById('documentUpload').click();
+    const generateButton = document.getElementById('generateButton');
+    const fileUploadArea = document.getElementById('fileUploadArea');
+    const documentUpload = document.getElementById('documentUpload');
+    
+    console.log('Elements found:', {
+        generateButton: !!generateButton,
+        fileUploadArea: !!fileUploadArea,
+        documentUpload: !!documentUpload
     });
+    
+    if (generateButton) {
+        generateButton.addEventListener('click', generateWorkflow);
+        console.log('Generate button listener added');
+    } else {
+        console.error('generateButton not found');
+    }
+    
+    if (fileUploadArea && documentUpload) {
+        fileUploadArea.addEventListener('click', () => {
+            console.log('File upload area clicked');
+            documentUpload.click();
+        });
+        console.log('File upload area listener added');
+    } else {
+        console.error('fileUploadArea or documentUpload not found');
+    }
+    
+    console.log('Workflow Designer: Setup complete');
 });
 
 function loadWorkflowForEditing(workflow) {
@@ -152,7 +192,7 @@ async function generateWorkflow() {
         updateProgress(10, 'Initializing authentication...');
         
         // Initialize auth
-        const auth = new window.CognitoAuth();
+        const auth = new CognitoAuth();
         
         updateProgress(20, 'Uploading document to S3...');
         
@@ -203,28 +243,27 @@ async function uploadDocumentToS3(file) {
         const arrayBuffer = await file.arrayBuffer();
         const uint8Array = new Uint8Array(arrayBuffer);
         
-        // Configure AWS SDK
-        AWS.config.update({
-            accessKeyId: session.credentials.AccessKeyId,
-            secretAccessKey: session.credentials.SecretKey,
-            sessionToken: session.credentials.SessionToken,
-            region: config.cognitoConfig.region
+        // Use AWS SDK v3
+        const s3Client = new S3Client({
+            region: config.cognitoConfig.region,
+            credentials: {
+                accessKeyId: session.credentials.AccessKeyId,
+                secretAccessKey: session.credentials.SecretKey,
+                sessionToken: session.credentials.SessionToken
+            }
         });
         
-        // Create S3 service object
-        const s3 = new AWS.S3();
-        
         // Upload parameters
-        const uploadParams = {
+        const command = new PutObjectCommand({
             Bucket: config.cognitoConfig.s3BucketName,
             Key: key,
             Body: uint8Array,
             ContentType: file.type || 'application/octet-stream'
-        };
+        });
         
         // Upload to S3
-        const result = await s3.upload(uploadParams).promise();
-        console.log('Document uploaded to S3:', result.Location);
+        const result = await s3Client.send(command);
+        console.log('Document uploaded to S3:', key);
         
         return key;
         
@@ -252,28 +291,29 @@ async function analyzeDocumentWithAI(s3Key, modelType) {
         const s3BucketName = config.cognitoConfig.s3BucketName;
         const credentials = session.credentials;
         
-        // Fetch workflow designer prompt from S3 using AWS SDK
+        // Fetch workflow designer prompt from S3 using AWS SDK v3
         let analysisPrompt;
         try {
             console.log('Fetching workflow designer prompt from S3');
             
-            // Configure AWS SDK with Cognito credentials
-            AWS.config.update({
-                accessKeyId: credentials.AccessKeyId,
-                secretAccessKey: credentials.SecretKey,
-                sessionToken: credentials.SessionToken,
-                region: region
+            // Use AWS SDK v3
+            const s3Client = new S3Client({
+                region: region,
+                credentials: {
+                    accessKeyId: credentials.AccessKeyId,
+                    secretAccessKey: credentials.SecretKey,
+                    sessionToken: credentials.SessionToken
+                }
             });
 
-            const s3 = new AWS.S3();
-            
-            const getParams = {
+            const command = new GetObjectCommand({
                 Bucket: s3BucketName,
                 Key: 'config/prompts/workflow-designer-prompt.txt'
-            };
+            });
             
-            const result = await s3.getObject(getParams).promise();
-            analysisPrompt = result.Body.toString('utf-8');
+            const result = await s3Client.send(command);
+            const bodyContents = await result.Body.transformToString();
+            analysisPrompt = bodyContents;
             console.log('Loaded workflow designer prompt from S3');
             
             // Replace placeholder with actual document text
@@ -284,7 +324,7 @@ async function analyzeDocumentWithAI(s3Key, modelType) {
         }
         
         // Use CognitoAuth to call Nova Pro directly
-        const auth = new window.CognitoAuth();
+        const auth = new CognitoAuth();
         
         console.log('Document text being sent to AI:', documentText.substring(0, 200) + '...');
         console.log('Full document length:', documentText.length);

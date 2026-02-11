@@ -18,7 +18,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 async function logout() {
     try {
         // Clear stored credentials (keep cognitoConfig)
-        await browser.storage.local.remove(['accessToken', 'idToken', 'credentials', 'username', 'userEmail']);
+        await browser.storage.local.remove(['credentials', 'username', 'accessToken', 'idToken']);
         
         // Redirect to login
         window.location.href = 'auth.html';

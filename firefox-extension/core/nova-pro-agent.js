@@ -1,11 +1,12 @@
-// Nova Pro Agent for Firefox Extension
+// Nova Pro Agent for Chrome Extension
 class NovaProAgent {
   constructor() {
     this.isInitialized = false;
+    this.systemPrompt = null;
   }
 
   async initializeAgent() {
-    // Get existing Cognito credentials from browser storage
+    // Get existing Cognito credentials from Chrome storage
     const session = await browser.storage.local.get(['credentials']);
     const config = await browser.storage.local.get(['cognitoConfig']);
     
@@ -15,9 +16,58 @@ class NovaProAgent {
 
     this.credentials = session.credentials;
     this.region = config.cognitoConfig.region;
+    this.s3BucketName = config.cognitoConfig.s3BucketName;
+    
+    // Load system prompt from S3
+    await this.loadSystemPrompt();
+    
     this.isInitialized = true;
 
-    console.log('Nova Pro agent initialized');
+    console.log('Nova Pro agent initialized with system prompt');
+  }
+
+  async loadSystemPrompt() {
+    try {
+      console.log('Loading system prompt from S3...');
+      console.log('Bucket:', this.s3BucketName);
+      console.log('Region:', this.region);
+      console.log('Key: config/prompts/compliance-assistant-prompt.txt');
+      
+      // Import S3 client dynamically
+      const { S3Client, GetObjectCommand } = await import('@aws-sdk/client-s3');
+      
+      const s3Client = new S3Client({
+        region: this.region,
+        credentials: {
+          accessKeyId: this.credentials.AccessKeyId,
+          secretAccessKey: this.credentials.SecretKey,
+          sessionToken: this.credentials.SessionToken
+        }
+      });
+
+      const command = new GetObjectCommand({
+        Bucket: this.s3BucketName,
+        Key: 'config/prompts/compliance-assistant-prompt.txt'
+      });
+      
+      const result = await s3Client.send(command);
+      this.systemPrompt = await result.Body.transformToString();
+      console.log('✅ System prompt loaded from S3');
+      console.log('Prompt length:', this.systemPrompt.length, 'characters');
+      
+    } catch (error) {
+      console.error('⚠️ Failed to load system prompt from S3:', error);
+      console.error('Error details:', {
+        name: error.name,
+        message: error.message,
+        code: error.$metadata?.httpStatusCode
+      });
+      // Use a basic fallback prompt
+      this.systemPrompt = `You are an AI assistant helping with compliance evidence collection. 
+You have access to browser automation tools to help users navigate websites, take screenshots, and collect evidence.
+Always be helpful and follow the user's instructions carefully.`;
+      console.log('Using fallback system prompt');
+    }
   }
 
   // Simple text-only chat without tools (for analysis tasks)
@@ -32,7 +82,7 @@ class NovaProAgent {
       }
       
       const auth = new window.CognitoAuth();
-      const response = await auth.callBedrockAPI(message);
+      const response = await auth.callBedrockAPI(message, false, this.systemPrompt);
       
       // Extract text from response - handle both string and object returns
       if (typeof response === 'string') {
@@ -49,7 +99,7 @@ class NovaProAgent {
   }
 
   // Manual chat using Nova Pro - handles both text and tool responses
-  async handleManualChat(message) {
+  async handleManualChat(message, conversationHistory = []) {
     if (!this.isInitialized) {
       await this.initializeAgent();
     }
@@ -62,7 +112,7 @@ class NovaProAgent {
       }
       
       const auth = new window.CognitoAuth();
-      const response = await auth.callBedrockAPI(message);
+      const response = await auth.callBedrockAPI(message, true, this.systemPrompt, conversationHistory);
       
       console.log('Nova Pro response:', response);
       
@@ -184,5 +234,5 @@ class NovaProAgent {
   }
 }
 
-// Export for use in sidebar
+// Export for use in sidepanel
 window.NovaProAgent = NovaProAgent;
