@@ -1,4 +1,6 @@
 // Nova Pro Agent for Chrome Extension
+import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+
 class NovaProAgent {
   constructor() {
     this.isInitialized = false;
@@ -32,9 +34,6 @@ class NovaProAgent {
       console.log('Bucket:', this.s3BucketName);
       console.log('Region:', this.region);
       console.log('Key: config/prompts/compliance-assistant-prompt.txt');
-      
-      // Import S3 client dynamically
-      const { S3Client, GetObjectCommand } = await import('@aws-sdk/client-s3');
       
       const s3Client = new S3Client({
         region: this.region,

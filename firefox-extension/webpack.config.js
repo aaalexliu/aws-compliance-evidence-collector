@@ -63,6 +63,13 @@ module.exports = {
           name: 'vendors',
           chunks: 'all',
           priority: 10
+        },
+        common: {
+          minChunks: 2,
+          name: 'common',
+          chunks: 'all',
+          priority: 5,
+          reuseExistingChunk: true
         }
       }
     },

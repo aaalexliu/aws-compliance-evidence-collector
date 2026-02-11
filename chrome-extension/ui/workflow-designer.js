@@ -1,6 +1,7 @@
 // Import AWS SDK v3 modules
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import CognitoAuth from './auth-sdk.js';
+import '../core/workflow-manager.js';
 
 console.log('Workflow Designer: Script loaded with AWS SDK v3');
 

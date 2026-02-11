@@ -15,8 +15,7 @@ module.exports = {
   output: {
     path: path.resolve(__dirname, 'dist'),
     filename: '[name].bundle.js',
-    clean: true,
-    // Remove library config to avoid module issues
+    clean: true
   },
   plugins: [
     new CopyPlugin({
@@ -49,22 +48,28 @@ module.exports = {
     splitChunks: {
       chunks: 'all',
       cacheGroups: {
-        vendor: {
+        awssdk: {
+          test: /[\\/]node_modules[\\/](@aws-sdk|@smithy)[\\/]/,
+          name: 'aws-sdk',
+          priority: 20
+        },
+        vendors: {
           test: /[\\/]node_modules[\\/]/,
           name: 'vendors',
           priority: 10
         },
-        awssdk: {
-          test: /[\\/]node_modules[\\/]@aws-sdk[\\/]/,
-          name: 'aws-sdk',
-          priority: 20
+        common: {
+          minChunks: 2,
+          name: 'common',
+          priority: 5,
+          reuseExistingChunk: true
         }
       }
     }
   },
-  target: 'web',
-  // Ensure proper module handling for browser extensions
-  experiments: {
-    outputModule: false
-  }
+  performance: {
+    maxEntrypointSize: 512000,
+    maxAssetSize: 512000
+  },
+  target: 'web'
 };

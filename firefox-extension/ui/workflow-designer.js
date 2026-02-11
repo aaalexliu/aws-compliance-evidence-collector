@@ -42,33 +42,15 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Restore workflow if returning from test mode
     restoreWorkflowFromTestMode();
     
-    console.log('Adding event listeners');
-    // Add event listeners
+    console.log('Adding generate button listener');
+    // Add generate button listener
     const generateButton = document.getElementById('generateButton');
-    const fileUploadArea = document.getElementById('fileUploadArea');
-    const documentUpload = document.getElementById('documentUpload');
-    
-    console.log('Elements found:', {
-        generateButton: !!generateButton,
-        fileUploadArea: !!fileUploadArea,
-        documentUpload: !!documentUpload
-    });
     
     if (generateButton) {
         generateButton.addEventListener('click', generateWorkflow);
         console.log('Generate button listener added');
     } else {
         console.error('generateButton not found');
-    }
-    
-    if (fileUploadArea && documentUpload) {
-        fileUploadArea.addEventListener('click', () => {
-            console.log('File upload area clicked');
-            documentUpload.click();
-        });
-        console.log('File upload area listener added');
-    } else {
-        console.error('fileUploadArea or documentUpload not found');
     }
     
     console.log('Workflow Designer: Setup complete');
@@ -107,8 +89,27 @@ function loadWorkflowForEditing(workflow) {
 }
 
 function setupFileUpload() {
-    const uploadArea = document.querySelector('.file-upload-area');
+    console.log('setupFileUpload called');
+    const uploadArea = document.getElementById('fileUploadArea');
     const fileInput = document.getElementById('documentUpload');
+    
+    console.log('Upload elements:', {
+        uploadArea: !!uploadArea,
+        fileInput: !!fileInput
+    });
+    
+    if (!uploadArea || !fileInput) {
+        console.error('Upload area or file input not found');
+        return;
+    }
+    
+    // Click handler to trigger file input
+    uploadArea.addEventListener('click', (e) => {
+        console.log('Upload area clicked!');
+        e.preventDefault();
+        e.stopPropagation();
+        fileInput.click();
+    });
     
     // Drag and drop handlers
     uploadArea.addEventListener('dragover', (e) => {
@@ -132,10 +133,13 @@ function setupFileUpload() {
     
     // File input change handler
     fileInput.addEventListener('change', (e) => {
+        console.log('File input changed');
         if (e.target.files.length > 0) {
             handleFileSelection(e.target.files[0]);
         }
     });
+    
+    console.log('File upload handlers setup complete');
 }
 
 function handleFileSelection(file) {
