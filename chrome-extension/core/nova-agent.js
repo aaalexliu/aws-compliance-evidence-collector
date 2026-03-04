@@ -1,7 +1,7 @@
-// Nova Pro Agent for Chrome Extension
+// Nova Agent for Chrome Extension
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 
-class NovaProAgent {
+class NovaAgent {
   constructor() {
     this.isInitialized = false;
     this.systemPrompt = null;
@@ -9,8 +9,8 @@ class NovaProAgent {
 
   async initializeAgent() {
     // Get existing Cognito credentials from Chrome storage
-    const session = await browser.storage.local.get(['credentials']);
-    const config = await browser.storage.local.get(['cognitoConfig']);
+    const session = await chrome.storage.session.get(['credentials']);
+    const config = await chrome.storage.local.get(['cognitoConfig']);
     
     if (!session.credentials || !config.cognitoConfig) {
       throw new Error('No AWS credentials available. Please login first.');
@@ -25,7 +25,7 @@ class NovaProAgent {
     
     this.isInitialized = true;
 
-    console.log('Nova Pro agent initialized with system prompt');
+    console.log('Nova agent initialized with system prompt');
   }
 
   async loadSystemPrompt() {
@@ -90,20 +90,20 @@ Always be helpful and follow the user's instructions carefully.`;
         return response.output.message.content[0].text;
       }
       
-      return 'No response from Nova Pro';
+      return 'No response from Nova Agent';
     } catch (error) {
       console.error('Simple chat error:', error);
       throw error;
     }
   }
 
-  // Manual chat using Nova Pro - handles both text and tool responses
+  // Manual chat using Nova - handles both text and tool responses
   async handleManualChat(message, conversationHistory = []) {
     if (!this.isInitialized) {
       await this.initializeAgent();
     }
 
-    console.log('Nova Pro handling chat:', message);
+    console.log('Nova model handling chat:', message);
     
     try {
       if (!window.CognitoAuth) {
@@ -113,7 +113,7 @@ Always be helpful and follow the user's instructions carefully.`;
       const auth = new window.CognitoAuth();
       const response = await auth.callBedrockAPI(message, true, this.systemPrompt, conversationHistory);
       
-      console.log('Nova Pro response:', response);
+      console.log('Nova response:', response);
       
       // Handle tool responses - check for correct structure
       if (response.output?.message?.content) {
@@ -227,11 +227,11 @@ Always be helpful and follow the user's instructions carefully.`;
         fullResult: { text: simpleText }
       };
     } catch (error) {
-      console.error('Nova Pro chat failed:', error);
+      console.error('Nova chat failed:', error);
       throw error;
     }
   }
 }
 
 // Export for use in sidepanel
-window.NovaProAgent = NovaProAgent;
+window.NovaAgent = NovaAgent;

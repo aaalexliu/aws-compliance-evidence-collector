@@ -200,7 +200,7 @@ class CognitoAuth {
     const region = this.cognitoConfig.region;
     
     // Prepare Bedrock request
-    const bedrockUrl = `https://bedrock-runtime.${region}.amazonaws.com/model/amazon.nova-pro-v1:0/invoke`;
+    const bedrockUrl = `https://bedrock-runtime.${region}.amazonaws.com/model/global.amazon.nova-2-lite-v1:0/invoke`;
     
     const requestBody = {
       messages: [
@@ -232,7 +232,7 @@ class CognitoAuth {
       });
 
       const data = await response.json();
-      return data.output?.message?.content?.[0]?.text || 'No response from Nova Pro';
+      return data.output?.message?.content?.[0]?.text || 'No response from Nova';
     } catch (error) {
       throw new Error(`Bedrock API call failed: ${error.message}`);
     }

@@ -460,7 +460,7 @@ class CognitoAuth {
 
       // Invoke model
       const command = new InvokeModelCommand({
-        modelId: 'amazon.nova-pro-v1:0',
+        modelId: 'global.amazon.nova-2-lite-v1:0',
         body: JSON.stringify(requestBody),
         contentType: 'application/json',
         accept: 'application/json'

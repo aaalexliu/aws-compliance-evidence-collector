@@ -254,7 +254,7 @@ class WorkflowManager {
         
         messageCallback(`❌ Error in step ${i + 1}: ${error.message}`);
         
-        // Intelligent Error Recovery - Ask Nova Pro for help
+        // Intelligent Error Recovery - Ask Nova for help
         if (step.action === 'click' || step.action === 'navigate') {
           messageCallback(`🤖 Analyzing page for alternative options...`);
           
@@ -309,13 +309,13 @@ class WorkflowManager {
     }
   }
 
-  // Intelligent Error Recovery using Nova Pro
+  // Intelligent Error Recovery using Nova
   async intelligentErrorRecovery(failedStep, error, toolsManager, messageCallback) {
     try {
       // Get all clickable elements on current page
       const elements = await toolsManager.executeTool('ShowCheckboxes', {});
       
-      // Ask Nova Pro for suggestions
+      // Ask Nova for suggestions
       const prompt = `A workflow step failed with this error: "${error.message}"
 
 Failed Step:
@@ -341,11 +341,11 @@ Respond in JSON format:
   "recommendation": "skip" or "retry" or "alternative"
 }`;
 
-      // Call Nova Pro
-      const novaAgent = new window.NovaProAgent();
+      // Call Nova
+      const novaAgent = new window.NovaAgent();
       const response = await novaAgent.chat(prompt);
       
-      // Parse Nova Pro's response
+      // Parse Nova response
       let aiSuggestion;
       try {
         // Extract JSON from response
@@ -359,7 +359,7 @@ Respond in JSON format:
       }
 
       // Present options to user
-      messageCallback(`\n🤖 **Nova Pro Analysis:**\n${aiSuggestion.analysis}\n`);
+      messageCallback(`\n🤖 **Nova 2 Lite Analysis:**\n${aiSuggestion.analysis}\n`);
       
       if (aiSuggestion.suggestions && aiSuggestion.suggestions.length > 0) {
         messageCallback(`\n**Suggested alternatives:**`);

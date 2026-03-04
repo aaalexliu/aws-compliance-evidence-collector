@@ -4,7 +4,7 @@ Browser extension for automated compliance evidence collection using Amazon Bedr
 
 ## Features
 
-- 🤖 AI-powered evidence collection using Amazon Bedrock Nova Pro
+- 🤖 AI-powered evidence collection using Amazon Bedrock Nova
 - 📸 Automated screenshot capture
 - 📄 Document extraction and analysis
 - 🔄 Custom workflow creation and execution
@@ -15,7 +15,7 @@ Browser extension for automated compliance evidence collection using Amazon Bedr
 
 - Firefox browser (version 109 or later)
 - AWS Account with:
-  - Amazon Bedrock access (Nova Pro model enabled)
+  - Amazon Bedrock access (Nova model enabled)
   - Amazon Cognito User Pool and Identity Pool
   - Amazon S3 bucket for evidence storage
 - Node.js 18+ and npm (for building from source)
@@ -168,7 +168,7 @@ firefox-extension/
 │   ├── content.js             # Page interaction
 │   ├── cognito-helper.js      # AWS Cognito utilities
 │   ├── s3-helper.js           # S3 operations
-│   ├── nova-pro-agent.js      # Bedrock AI agent
+│   ├── nova-agent.js          # Bedrock AI agent
 │   ├── workflow-manager.js    # Workflow execution
 │   ├── tools.js               # Agent tools
 │   └── text-similarity.js     # Text matching
@@ -233,7 +233,7 @@ npm run watch
 ### AI Agent Not Responding
 
 - Verify Amazon Bedrock access in your AWS account
-- Ensure Nova Pro model is enabled in your region
+- Ensure Nova model is enabled in your region
 - Check S3 bucket permissions for system prompts
 - Review background script logs in Firefox debugger
 

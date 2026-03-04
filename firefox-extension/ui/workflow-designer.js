@@ -203,10 +203,10 @@ async function generateWorkflow() {
         
         // Upload document to S3
         const s3Key = await uploadDocumentToS3(selectedFile);
-        updateProgress(40, 'Document uploaded. Nova Pro is analyzing...');
+        updateProgress(40, 'Document uploaded. Nova 2 Lite is analyzing...');
         
-        // Generate workflow using Nova Pro
-        const workflow = await analyzeDocumentWithAI(s3Key, 'nova-pro');
+        // Generate workflow using Nova
+        const workflow = await analyzeDocumentWithAI(s3Key, 'nova');
         updateProgress(90, 'Finalizing workflow...');
         
         // Display results
@@ -328,17 +328,17 @@ async function analyzeDocumentWithAI(s3Key, modelType) {
             throw new Error('Workflow designer prompt not available. Please ensure prompts are uploaded to S3.');
         }
         
-        // Use CognitoAuth to call Nova Pro directly
+        // Use CognitoAuth to call Nova directly
         const auth = new CognitoAuth();
         
         console.log('Document text being sent to AI:', documentText.substring(0, 200) + '...');
         console.log('Full document length:', documentText.length);
-        console.log('Sending document analysis request to Nova Pro...');
+        console.log('Sending document analysis request to Nova 2 Lite...');
         const response = await auth.callBedrockAPI(analysisPrompt);
         
-        console.log('Nova Pro response:', response);
+        console.log('Nova response:', response);
         
-        // Parse the workflow from Nova Pro response
+        // Parse the workflow from Nova response
         const workflow = parseWorkflowFromResponse(response);
         return workflow;
         
@@ -356,11 +356,11 @@ function parseWorkflowFromResponse(response) {
         
         let responseText = '';
         
-        // Handle different response formats from Nova Pro
+        // Handle different response formats from Nova
         if (typeof response === 'string') {
             responseText = response;
         } else if (response.output?.message?.content) {
-            // Extract text from Nova Pro response structure
+            // Extract text from Nova response structure
             for (const item of response.output.message.content) {
                 if (item.text) {
                     responseText += item.text;

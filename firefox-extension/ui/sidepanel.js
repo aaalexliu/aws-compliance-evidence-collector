@@ -4,14 +4,14 @@ import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
 import CognitoAuth from './auth-sdk.js';
 import '../core/tools.js';
 import '../core/workflow-manager.js';
-import '../core/nova-pro-agent.js';
+import '../core/nova-agent.js';
 import '../core/text-similarity.js';
 
 // Make CognitoAuth globally available
 window.CognitoAuth = CognitoAuth;
 
 // Classes are made globally available by the imported modules
-// CognitoAuth, S3Manager, EvidenceTools, WorkflowManager, NovaProAgent
+// CognitoAuth, S3Manager, EvidenceTools, WorkflowManager, NovaAgent
 
 document.addEventListener('DOMContentLoaded', async function() {
   // Initialize tools framework
@@ -195,7 +195,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       });
       addMessage(elementsList, 'assistant');
       
-      // Use simple text similarity matching instead of Nova Pro
+      // Use simple text similarity matching instead of Nova
       const failedLower = failedElement.toLowerCase();
       const matches = elementsResponse.elements
         .map(el => ({
@@ -297,7 +297,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
   }
 
-  // Generate workflow report with Nova Pro summary
+  // Generate workflow report with Nova summary
   async function generateWorkflowReport(workflowName, logData) {
     addMessage('🤖 Analyzing workflow execution...', 'assistant');
     
@@ -342,7 +342,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       throw new Error('Report analysis prompt not available. Please ensure prompts are uploaded to S3.');
     }
     
-    // Prepare workflow summary for Nova Pro
+    // Prepare workflow summary for Nova
     const workflowData = `
 Workflow: ${logData.workflowName}
 User: ${logData.username}
@@ -363,10 +363,10 @@ ${idx + 1}. ${step.action.toUpperCase()}: ${step.description}
     // Replace placeholder with actual workflow data
     const workflowSummary = reportPromptTemplate.replace('{{WORKFLOW_DATA}}', workflowData);
 
-    // Get Nova Pro analysis
-    const analysis = await novaProAgent.simpleChat(workflowSummary);
+    // Get Nova analysis
+    const analysis = await novaAgent.simpleChat(workflowSummary);
     
-    // Parse Nova Pro response
+    // Parse Nova response
     const executiveSummary = analysis.match(/EXECUTIVE_SUMMARY:\s*(.+?)(?=KEY_FINDINGS:|$)/s)?.[1]?.trim() || 'Workflow executed successfully.';
     const keyFindings = analysis.match(/KEY_FINDINGS:\s*(.+?)(?=COMPLIANCE_STATUS:|$)/s)?.[1]?.trim() || 'All steps completed as expected.';
     const complianceStatus = analysis.match(/COMPLIANCE_STATUS:\s*(.+?)(?=RECOMMENDATIONS:|$)/s)?.[1]?.trim() || 'Compliant';
@@ -662,7 +662,7 @@ ${idx + 1}. ${step.action.toUpperCase()}: ${step.description}
     chatArea.scrollTop = chatArea.scrollHeight;
   }
 
-  async function callNovaProAPI(message) {
+  async function callNovaAPI(message) {
     try {
       const config = await browser.storage.local.get(['cognitoConfig']);
       const session = await browser.storage.local.get(['credentials']);
@@ -676,7 +676,7 @@ ${idx + 1}. ${step.action.toUpperCase()}: ${step.description}
       
       return await auth.callBedrockAPI(message);
     } catch (error) {
-      return `Error calling Nova Pro: ${error.message}`;
+      return `Error calling Nova: ${error.message}`;
     }
   }
 
@@ -762,9 +762,9 @@ ${idx + 1}. ${step.action.toUpperCase()}: ${step.description}
         }
         
       } else {
-        // Send to Nova Pro for AI response
-        addMessage('Asking Nova Pro...', 'assistant');
-        const aiResponse = await callNovaProAPI(command);
+        // Send to Nova for AI response
+        addMessage('Asking Nova 2 Lite...', 'assistant');
+        const aiResponse = await callNovaAPI(command);
         // Replace the "asking" message with actual response
         const messages = chatArea.querySelectorAll('.message.assistant');
         const lastMessage = messages[messages.length - 1];
@@ -777,12 +777,12 @@ ${idx + 1}. ${step.action.toUpperCase()}: ${step.description}
     }
   }
 
-  // Event listeners - Updated to use Nova Pro for everything (only if elements exist)
+  // Event listeners - Updated to use Nova for everything (only if elements exist)
   if (sendButton) {
     sendButton.addEventListener('click', async () => {
       const message = messageInput.value.trim();
       if (message) {
-        await sendMessageWithNovaPro(message);
+        await sendMessageWithNova(message);
         messageInput.value = '';
       }
     });
@@ -796,23 +796,23 @@ ${idx + 1}. ${step.action.toUpperCase()}: ${step.description}
     });
   }
 
-  // Initialize Nova Pro agent for both manual and automation
-  let novaProAgent = null;
+  // Initialize Nova agent for both manual and automation
+  let novaAgent = null;
   
-  // Initialize Nova Pro agent
-  async function initializeNovaProAgent() {
+  // Initialize Nova agent
+  async function initializeNovaAgent() {
     try {
-      if (window.NovaProAgent) {
-        novaProAgent = new window.NovaProAgent();
-        console.log('Nova Pro agent initialized for manual and automation');
+      if (window.NovaAgent) {
+        novaAgent = new window.NovaAgent();
+        console.log('Nova agent initialized for manual and automation');
       }
     } catch (error) {
-      console.error('Failed to initialize Nova Pro agent:', error);
+      console.error('Failed to initialize Nova agent:', error);
     }
   }
 
-  // Send message using Nova Pro agent
-  async function sendMessageWithNovaPro(message) {
+  // Send message using Nova agent
+  async function sendMessageWithNova(message) {
     if (!message.trim()) return;
 
     addMessage(message, 'user');
@@ -932,13 +932,13 @@ ${idx + 1}. ${step.action.toUpperCase()}: ${step.description}
       }
     }
 
-    if (!novaProAgent) {
-      addMessage('Nova Pro agent not available. Please refresh the extension.', 'assistant');
+    if (!novaAgent) {
+      addMessage('Nova 2 Lite agent not available. Please refresh the extension.', 'assistant');
       return;
     }
 
     try {
-      // Use Nova Pro for all chat interactions
+      // Use Nova for all chat interactions
       addMessage('Agent is thinking...', 'assistant');
       
       // Convert chatHistory to Bedrock format (only last 10 messages to avoid token limits)
@@ -953,7 +953,7 @@ ${idx + 1}. ${step.action.toUpperCase()}: ${step.description}
         recentHistory.shift();
       }
       
-      const result = await novaProAgent.handleManualChat(message, recentHistory);
+      const result = await novaAgent.handleManualChat(message, recentHistory);
       
       // Replace the "thinking" message with actual response
       const messages = chatArea.querySelectorAll('.message.assistant');
@@ -995,7 +995,7 @@ ${idx + 1}. ${step.action.toUpperCase()}: ${step.description}
         }
       }
     } catch (error) {
-      console.error('Nova Pro chat error:', error);
+      console.error('Nova chat error:', error);
       addMessage(`Error: ${error.message}`, 'assistant');
       
       // Log error to chat history too
@@ -1504,9 +1504,9 @@ ${idx + 1}. ${step.action.toUpperCase()}: ${step.description}
     }
   });
 
-  // Initialize Nova Pro agent on load
+  // Initialize Nova agent on load
   setTimeout(() => {
-    initializeNovaProAgent();
+    initializeNovaAgent();
   }, 100);
 
   // Clear chat functionality (only if element exists)
@@ -1519,7 +1519,7 @@ ${idx + 1}. ${step.action.toUpperCase()}: ${step.description}
         <div class="message assistant">
           <div class="assistant-title">Evidence Collection Assistant</div>
           <div style="font-size: 12px; line-height: 1.3;">
-          I'm your AI assistant powered by Nova Pro! I can help you: Take screenshots and navigate websites, Answer questions about compliance evidence, Guide you through website interactions, Execute automated workflows, Provide general assistance. 
+          I'm your AI assistant powered by Nova 2 Lite! I can help you: Take screenshots and navigate websites, Answer questions about compliance evidence, Guide you through website interactions, Execute automated workflows, Provide general assistance. 
           
           <strong>Available Commands:</strong> "screenshot", "navigate github.com", "scroll down/up", "click settings", "find profile menu", or ask me anything.
           

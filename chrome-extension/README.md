@@ -1,6 +1,6 @@
 # Chrome Extension - Evidence Collection Suite
 
-AI-powered compliance evidence collection with automated workflow generation using AWS Bedrock Nova Pro.
+AI-powered compliance evidence collection with automated workflow generation using AWS Bedrock Nova 2 Lite.
 
 ## 🎯 Overview
 
@@ -15,7 +15,7 @@ This Chrome extension helps compliance teams automate evidence collection by:
 - Node.js 16+ and npm
 - AWS Account with:
   - Amazon Cognito (User Pool + Identity Pool)
-  - Amazon Bedrock (Nova Pro model access)
+  - Amazon Bedrock (Nova 2 Lite model access)
   - Amazon S3 bucket
 - Chrome browser
 
@@ -67,7 +67,7 @@ chrome-extension/
 │   ├── background.js              # Service worker
 │   ├── cognito-helper.js          # AWS Cognito utilities (SDK v3)
 │   ├── content.js                 # DOM automation with ordinal support
-│   ├── nova-pro-agent.js          # Bedrock Nova Pro integration
+│   ├── nova-agent.js              # Bedrock Nova 2 Lite integration
 │   ├── s3-helper.js               # S3 operations (SDK v3)
 │   ├── text-similarity.js         # Element matching
 │   ├── tools.js                   # AI tool implementations
@@ -168,7 +168,7 @@ npm run watch
       "Action": [
         "bedrock:InvokeModel"
       ],
-      "Resource": "arn:aws:bedrock:*::foundation-model/amazon.nova-pro-v1:0"
+      "Resource": "arn:aws:bedrock:*::foundation-model/global.amazon.nova-2-lite-v1:0"
     },
     {
       "Effect": "Allow",
