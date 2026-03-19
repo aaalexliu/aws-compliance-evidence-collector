@@ -40,12 +40,11 @@ Amazon Nova 2 Lite serves as the intelligence layer with three operational modes
 
 - **Chat mode:** For example, ask ad-hoc questions, and it will answer compliance questions and execute browser automation tools based on natural language commands. This is most useful when you need quick evidence collection without creating a full workflow.
 
-[<video src="https://github.com/aws-samples/sample-ai-powered-compliance-evidence-collector/raw/main/images/video-1-interactive-chat-evidence-collection.mp4" controls></video>](https://github.com/user-attachments/assets/200fb5b7-11e9-4095-8f3f-b457105a2726)
+https://github.com/user-attachments/assets/5d80d472-7332-4957-b7fa-a869d12c8937
 
 - **Designer mode** (used for creating new workflows): Analyzes uploaded `.txt` documents to extract workflow steps and generate automation scripts. Use this when you have compliance documentation and need to create repeatable workflows.
 
-<!-- TODO: Replace with actual video -->
-> 🎥 *Video: Design compliance workflow demo*
+https://github.com/user-attachments/assets/5d80d472-7332-4957-b7fa-a869d12c8937
 
 - **Report generation mode** (used after workflow completion): Analyzes captured screenshots after workflow completion to generate a comprehensive compliance report that includes evidence summaries, findings, and compliance status assessments. Amazon SES then emails the completed report to your specified email address.
 
