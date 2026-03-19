@@ -32,7 +32,7 @@ Now that you understand what the system does, let's examine how it's structured.
 The side panel provides the primary interface with three components. The chat interface allows for natural language interaction with Amazon Nova 2 Lite for compliance questions and one-time automation. The workflow management panel lists available workflows, shows execution status, and provides edit capabilities. The authentication UI handles Amazon Cognito login and configuration management. The following image shows the UI and its capabilities.
 
 <!-- TODO: Replace with actual image -->
-![UI Layer Overview](images/0.1.UILayerOverview.png)
+![UI Layer Overview](images/2.UILayerOverview.png)
 
 ### B. AI Agent Layer
 
@@ -102,7 +102,7 @@ evidence-collector-bucket-{AccountId}-{Region}/
 The following image shows what happens in the frontend and which AWS services you interact with.
 
 <!-- TODO: Replace with actual image -->
-![AI-Powered Workflow Designer](images/2.AI-PoweredWorkflowDesigner.png)
+![AI-Powered Workflow Designer](images/3.AI-PoweredWorkflowDesigner.png)
 
 The workflow designer solves a key challenge: creating workflows from compliance documents quickly and accurately. You can upload a PDF, Word document, or text file containing compliance requirements, and Amazon Nova 2 Lite analyzes it to generate executable workflows.
 
@@ -216,7 +216,7 @@ After deployment, the CloudFormation outputs provide values needed to configure 
 You will input this data into the browser extension for a one-time setup. The output of the CloudFormation screen will be as shown in the following image.
 
 <!-- TODO: Replace with actual image -->
-![CloudFormation Output Evidence Collector](images/3.CloudFormationOutputEvidenceCollector.png)
+![CloudFormation Output Evidence Collector](images/4.CloudFormationOutputEvidenceCollector.png)
 
 ## Browser extension configuration
 
@@ -241,7 +241,7 @@ This will create a `dist` folder within the `chrome-extension` folder, then you 
 After you have the extension installed, you can insert the output from the CloudFormation template to configure it as shown in the following image.
 
 <!-- TODO: Replace with actual image -->
-![Evidence Collector Chrome Extension](images/4.EvidenceCollector-Chrome-Extension.png)
+![Evidence Collector Chrome Extension](images/5.EvidenceCollector-Chrome-Extension.png)
 
 ### For Firefox
 
@@ -265,7 +265,7 @@ This will create a `dist` folder within the `firefox-extension` folder, then you
 The extension is now installed temporarily and will remain active until you restart Firefox. It will appear under the Temporary Extensions header. After installation, input the CloudFormation template outputs into the extension to configure it as shown in the following image.
 
 <!-- TODO: Replace with actual image -->
-![Evidence Collector Firefox Extension](images/5.EvidenceCollector-Firefox-Extension.png)
+![Evidence Collector Firefox Extension](images/6.EvidenceCollector-Firefox-Extension.png)
 
 After you have the configuration in place, save it and log in with the username and temporary password that was emailed to you. At first login, you will be asked to change the password for the user.
 
@@ -283,12 +283,12 @@ Let's walk through a typical audit workflow. In our example, we use Chrome as th
 The process is consistent as the same evidence is collected every time, with the same naming conventions and organization. The following video shows the workflow in process.
 
 <!-- TODO: Replace with actual video/gif -->
-![Evidence Collector Workflow Demo](images/6.EvidenceCollectorWorkflowDemo-Compressed.gif)
+![Evidence Collector Workflow Demo](images/7.EvidenceCollectorWorkflowDemo-Compressed.gif)
 
 The following video shows the email that is generated and sent to the user.
 
 <!-- TODO: Replace with actual video/gif -->
-![Evidence Email Report](images/7.EvidenceEmailReport-compressed.gif)
+![Evidence Email Report](images/8.EvidenceEmailReport-compressed.gif)
 
 ## Automated workflow execution
 
