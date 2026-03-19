@@ -1,7 +1,7 @@
 > [!NOTE]
 > The content presented here serves as an example intended solely for educational objectives and should not be implemented in a live production environment without proper modifications and rigorous testing.
 > 
-# AI-Powered Compliance Evidence Collector
+# Building an AI-Powered Compliance Evidence Collector
 
 Compliance audits require comprehensive evidence trails, often involving hundreds of screenshots across multiple systems. Your compliance teams likely spend hours manually navigating through [GitHub](https://github.com/) repositories, AWS consoles, and internal applications, capturing screenshots at each step. This manual process is time-consuming, error-prone, and difficult to reproduce consistently across audit cycles. This post demonstrates how we automated audit workflows using [Amazon Bedrock](https://aws.amazon.com/bedrock/) and browser automation.
 
@@ -40,7 +40,6 @@ Amazon Nova 2 Lite serves as the intelligence layer with three operational modes
 
 - **Chat mode:** For example, ask ad-hoc questions, and it will answer compliance questions and execute browser automation tools based on natural language commands. This is most useful when you need quick evidence collection without creating a full workflow.
 
-<!-- TODO: Replace with actual video -->
 <video src="https://github.com/aws-samples/sample-ai-powered-compliance-evidence-collector/raw/main/images/video-1-interactive-chat-evidence-collection.mp4" controls></video>
 
 - **Designer mode** (used for creating new workflows): Analyzes uploaded `.txt` documents to extract workflow steps and generate automation scripts. Use this when you have compliance documentation and need to create repeatable workflows.
