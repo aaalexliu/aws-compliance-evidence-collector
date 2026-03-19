@@ -1,3 +1,6 @@
+> [!NOTE]
+> The content presented here serves as an example intended solely for educational objectives and should not be implemented in a live production environment without proper modifications and rigorous testing.
+> 
 # AI-Powered Compliance Evidence Collector
 
 Compliance audits require comprehensive evidence trails, often involving hundreds of screenshots across multiple systems. Your compliance teams likely spend hours manually navigating through [GitHub](https://github.com/) repositories, AWS consoles, and internal applications, capturing screenshots at each step. This manual process is time-consuming, error-prone, and difficult to reproduce consistently across audit cycles. This post demonstrates how we automated audit workflows using [Amazon Bedrock](https://aws.amazon.com/bedrock/) and browser automation.
