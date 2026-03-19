@@ -41,7 +41,7 @@ Amazon Nova 2 Lite serves as the intelligence layer with three operational modes
 - **Chat mode:** For example, ask ad-hoc questions, and it will answer compliance questions and execute browser automation tools based on natural language commands. This is most useful when you need quick evidence collection without creating a full workflow.
 
 <!-- TODO: Replace with actual video -->
-> 🎥 *Video: Interactive chat evidence collection demo*
+<video src="https://github.com/aws-samples/sample-ai-powered-compliance-evidence-collector/raw/main/images/video-1-interactive-chat-evidence-collection.mp4" controls></video>
 
 - **Designer mode** (used for creating new workflows): Analyzes uploaded `.txt` documents to extract workflow steps and generate automation scripts. Use this when you have compliance documentation and need to create repeatable workflows.
 
