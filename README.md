@@ -54,8 +54,7 @@ The workflow execution engine processes JSON-defined workflows step by step. JSO
 
 The workflow designer analyzes compliance documents using Amazon Nova 2 Lite, extracts required evidence points, and generates workflow JSON. You can test workflows before saving, edit existing workflows, and manage workflow versions in Amazon S3.
 
-<!-- TODO: Replace with actual video -->
-> 🎥 *Video: Run workflow evidence collector demo*
+https://github.com/user-attachments/assets/f501fec6-b6e9-4fd8-a396-c5e84e68d1ee
 
 ### D. Storage and Services
 
