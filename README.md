@@ -280,12 +280,12 @@ Let's walk through a typical audit workflow. In our example, we use Chrome as th
 The process is consistent as the same evidence is collected every time, with the same naming conventions and organization. The following video shows the workflow in process.
 
 <!-- TODO: Replace with actual video/gif -->
-![Evidence Collector Workflow Demo](images/7.EvidenceCollectorWorkflowDemo-Compressed.gif)
+![Evidence Collector Workflow Demo](images/7.EvidenceCollectorWorkflowDemo.gif)
 
 The following video shows the email that is generated and sent to the user.
 
 <!-- TODO: Replace with actual video/gif -->
-![Evidence Email Report](images/8.EvidenceEmailReport-compressed.gif)
+![Evidence Email Report](images/8.EvidenceEmailReport.gif)
 
 ## Automated workflow execution
 
