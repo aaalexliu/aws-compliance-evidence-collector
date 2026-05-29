@@ -1,6 +1,3 @@
-// Evidence Collector Tools
-import { getCachedUserEmail } from './cognito-helper.js';
-
 class EvidenceTools {
   constructor(components) {
     this.components = components;
@@ -184,33 +181,6 @@ class EvidenceTools {
         script: this.scrollPage.bind(this),
         run_after_app_init: false,
         order: 7
-      },
-      {
-        tool_name: "EmailReport",
-        description: "Generate and email a workflow report to a specified recipient. Uses the most recent workflow report or a specific workflow if name is provided.",
-        inputSchema: {
-          json: JSON.stringify({
-            type: "object",
-            properties: {
-              recipientEmail: {
-                type: "string",
-                description: "Email address to send the report to"
-              },
-              workflowName: {
-                type: "string",
-                description: "Optional: specific workflow name to send report for. If not provided, uses the most recent workflow."
-              },
-              subject: {
-                type: "string",
-                description: "Optional: custom email subject line"
-              }
-            },
-            required: ["recipientEmail"]
-          })
-        },
-        script: EvidenceTools.emailReport.bind(this),
-        run_after_app_init: false,
-        order: 8
       }
     ];
   }
@@ -732,92 +702,6 @@ class EvidenceTools {
     }
   }
 
-  static async emailReport(args) {
-    const { input } = args;
-    try {
-      // Get active report from browser.storage
-      const storage = await browser.storage.local.get(['activeWorkflowReport', 'credentials']);
-      const activeReport = storage.activeWorkflowReport;
-      const credentials = storage.credentials;
-      
-      if (!activeReport) {
-        return JSON.stringify({
-          success: false,
-          error: 'No workflow report available. Please run a workflow first.'
-        });
-      }
-      
-      if (!credentials) {
-        return JSON.stringify({
-          success: false,
-          error: 'Not authenticated. Please log in first.'
-        });
-      }
-      
-      // Check if specific workflow requested
-      if (input.workflowName && activeReport.workflowName !== input.workflowName) {
-        return JSON.stringify({
-          success: false,
-          error: `Workflow "${input.workflowName}" not found. Only the most recent workflow report is available.`
-        });
-      }
-      
-      // Get config and user email
-      const config = await browser.storage.local.get(['cognitoConfig']);
-      
-      // Get user email using AWS SDK helper
-      let userEmail = await getCachedUserEmail();
-      
-      // Validate recipient email
-      if (!input.recipientEmail) {
-        return JSON.stringify({
-          success: false,
-          error: 'Recipient email is required'
-        });
-      }
-      
-      // Send email via SES
-      const AWS_SDK = window.AWS;
-      AWS_SDK.config.update({
-        accessKeyId: credentials.AccessKeyId,
-        secretAccessKey: credentials.SecretKey,
-        sessionToken: credentials.SessionToken,
-        region: config.cognitoConfig.region
-      });
-      
-      const ses = new AWS_SDK.SES();
-      const params = {
-        Source: userEmail || input.recipientEmail,
-        Destination: {
-          ToAddresses: [input.recipientEmail]
-        },
-        Message: {
-          Subject: {
-            Data: `Evidence Report: ${activeReport.workflowName}`,
-            Charset: 'UTF-8'
-          },
-          Body: {
-            Html: {
-              Data: activeReport.reportHTML,
-              Charset: 'UTF-8'
-            }
-          }
-        }
-      };
-      
-      await ses.sendEmail(params).promise();
-      
-      return JSON.stringify({
-        success: true,
-        message: `Report for "${activeReport.workflowName}" emailed to ${input.recipientEmail}`
-      });
-    } catch (error) {
-      return JSON.stringify({
-        success: false,
-        error: error.message
-      });
-    }
-  }
 }
 
 // Export for use in sidepanel

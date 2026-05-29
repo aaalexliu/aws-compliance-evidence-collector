@@ -20,12 +20,6 @@ Parameters:
     AllowedPattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     ConstraintDescription: 'Must be a valid email address'
 
-  AdminEmail:
-    Type: String
-    Description: 'Admin email address for SES verification (for sending reports). Must be a valid email address'
-    AllowedPattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    ConstraintDescription: 'Must be a valid email address'
-
   BucketName:
     Type: String
     Description: 'S3 bucket name for evidence storage'
@@ -253,12 +247,6 @@ Resources:
                 'bedrock:InferenceProfileArn': !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/global.amazon.nova-2-lite-v1:0'
           - Effect: Allow
             Action:
-              - ses:SendEmail
-              - ses:SendRawEmail
-            Resource:
-              - !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/*'
-          - Effect: Allow
-            Action:
               - s3:PutObject
               - s3:GetObject
               - s3:DeleteObject
@@ -374,12 +362,6 @@ Resources:
               - !Sub 'arn:aws:s3:::${EvidenceBucket}/config/workflows/*'
               - !Sub 'arn:aws:s3:::${EvidenceBucket}/chat-logs/*'
               - !Sub 'arn:aws:s3:::${EvidenceBucket}/reports/*'
-          - Effect: Allow
-            Action:
-              - ses:VerifyEmailIdentity
-              - ses:GetIdentityVerificationAttributes
-            Resource:
-              - !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/*'
           - Effect: Allow
             Action:
               - sqs:SendMessage
@@ -612,18 +594,6 @@ Resources:
                               ContentType='text/plain'
                           )
                       
-                      # Send SES verification email
-                      admin_email = properties.get('AdminEmail')
-                      region = properties.get('Region', 'us-east-1')
-                      if admin_email:
-                          ses = boto3.client('ses', region_name=region)
-                          try:
-                              ses.verify_email_identity(EmailAddress=admin_email)
-                              print(f"SES verification email sent to {admin_email}")
-                          except Exception as ses_error:
-                              print(f"Failed to send SES verification: {ses_error}")
-                              # Don't fail the stack if SES verification fails
-                      
                       print(f"Successfully uploaded prompts and created folder structure in {bucket}")
                       cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
                       
@@ -648,8 +618,6 @@ Resources:
     Properties:
       ServiceToken: !GetAtt PromptUploaderFunction.Arn
       BucketName: !Ref EvidenceBucket
-      AdminEmail: !Ref AdminEmail
-      Region: !Ref AWS::Region
       Version: "1.1"  # Increment to force update
 
   # ========================================

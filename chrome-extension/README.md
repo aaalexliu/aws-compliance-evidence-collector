@@ -7,7 +7,7 @@ AI-powered compliance evidence collection with automated workflow generation usi
 This Chrome extension helps compliance teams automate evidence collection by:
 - Using AI to understand compliance requirements
 - Automatically navigating websites and capturing evidence
-- Generating structured compliance reports
+- Generating structured compliance reports that can be downloaded from S3
 - Storing evidence securely in AWS S3
 
 ## 🔧 Prerequisites
@@ -109,7 +109,7 @@ chrome-extension/
 - Upload compliance documents
 - AI generates automated workflows
 - Test and execute workflows
-- Export evidence reports
+- Generate and download evidence reports from S3
 
 ## 🛠️ Development
 

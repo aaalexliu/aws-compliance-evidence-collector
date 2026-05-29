@@ -7,6 +7,7 @@ Browser extension for automated compliance evidence collection using Amazon Bedr
 - 🤖 AI-powered evidence collection using Amazon Bedrock Nova
 - 📸 Automated screenshot capture
 - 📄 Document extraction and analysis
+- 📊 HTML report generation and S3 download
 - 🔄 Custom workflow creation and execution
 - 🔐 Secure AWS Cognito authentication
 - ☁️ Evidence storage in Amazon S3
