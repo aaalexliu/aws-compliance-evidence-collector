@@ -26,8 +26,8 @@ Parameters:
     NoEcho: true
     MinLength: 8
     Description: 'Temporary password for the initial Cognito user. Must satisfy the user pool password policy.'
-    AllowedPattern: '^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).{8,}$'
-    ConstraintDescription: 'Must be at least 8 characters and include uppercase, lowercase, number, and symbol characters'
+    AllowedPattern: '^(?=.*[a-z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).{8,}$'
+    ConstraintDescription: 'Must be at least 8 characters and include lowercase, number, and symbol characters'
 
   BucketName:
     Type: String
@@ -55,7 +55,7 @@ Resources:
           RequireLowercase: true
           RequireNumbers: true
           RequireSymbols: true
-          RequireUppercase: true
+          RequireUppercase: false
       AdminCreateUserConfig:
         AllowAdminCreateUserOnly: true
       UserPoolAddOns:
@@ -75,8 +75,74 @@ Resources:
     Properties:
       UserPoolId: !Ref CognitoUserPool
       Username: !Ref InitialUsername
-      TemporaryPassword: !Ref InitialTemporaryPassword
       MessageAction: SUPPRESS
+
+  InitialUserPasswordManagedPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - cognito-idp:AdminSetUserPassword
+            Resource:
+              - !GetAtt CognitoUserPool.Arn
+
+  InitialUserPasswordRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - !Ref InitialUserPasswordManagedPolicy
+
+  InitialUserPasswordFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt InitialUserPasswordRole.Arn
+      Timeout: 60
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+
+          cognito = boto3.client('cognito-idp')
+
+          def handler(event, context):
+              try:
+                  request_type = event['RequestType']
+                  properties = event['ResourceProperties']
+
+                  if request_type in ['Create', 'Update']:
+                      cognito.admin_set_user_password(
+                          UserPoolId=properties['UserPoolId'],
+                          Username=properties['Username'],
+                          Password=properties['Password'],
+                          Permanent=False
+                      )
+
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+              except Exception as e:
+                  print(f"Error setting initial user password: {str(e)}")
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {'Error': str(e)})
+
+  InitialUserPassword:
+    Type: Custom::InitialUserPassword
+    DependsOn: AppUser
+    Properties:
+      ServiceToken: !GetAtt InitialUserPasswordFunction.Arn
+      UserPoolId: !Ref CognitoUserPool
+      Username: !Ref InitialUsername
+      Password: !Ref InitialTemporaryPassword
 
   UserGroupAttachment:
     Type: AWS::Cognito::UserPoolUserToGroupAttachment
