@@ -339,7 +339,68 @@ export class S3Manager {
       'text/html'
     );
     
-    return `s3://${this.config.s3BucketName}/${key}`;
+    return {
+      success: true,
+      bucketName: this.config.s3BucketName,
+      key,
+      filename,
+      s3Url: `s3://${this.config.s3BucketName}/${key}`,
+      consoleUrl: this.getS3ConsoleUrl(key)
+    };
+  }
+
+  getS3ConsoleUrl(key) {
+    return `https://s3.console.aws.amazon.com/s3/object/${this.config.s3BucketName}?region=${this.config.region}&bucketType=general&prefix=${encodeURIComponent(key)}`;
+  }
+
+  getReportLocation(report) {
+    if (typeof report === 'string') {
+      const match = report.match(/^s3:\/\/([^/]+)\/(.+)$/);
+      if (!match) {
+        throw new Error('Invalid S3 report URL');
+      }
+
+      const [, bucketName, key] = match;
+      return {
+        bucketName,
+        key,
+        filename: key.split('/').pop()
+      };
+    }
+
+    const s3Url = report.s3Url || report.reportUrl;
+    if (!report.key && s3Url) {
+      return this.getReportLocation(s3Url);
+    }
+
+    if (!report.key) {
+      throw new Error('Report S3 key is missing');
+    }
+
+    return {
+      bucketName: report.bucketName || this.config.s3BucketName,
+      key: report.key,
+      filename: report.filename || report.key.split('/').pop()
+    };
+  }
+
+  async downloadReport(report) {
+    await this.initialize();
+
+    const location = this.getReportLocation(report);
+    const content = await downloadFromS3(
+      location.bucketName,
+      location.key,
+      this.credentials,
+      this.config.region
+    );
+
+    return {
+      ...location,
+      content,
+      contentType: 'text/html',
+      s3Url: `s3://${location.bucketName}/${location.key}`
+    };
   }
 
   async loadWorkflowsFromS3() {

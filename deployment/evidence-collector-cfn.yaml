@@ -14,17 +14,20 @@ Parameters:
     AllowedValues: [dev, staging, prod]
     Description: Environment name
 
-  UserEmail:
+  InitialUsername:
     Type: String
-    Description: 'Email address for the initial user. Must be a valid email address'
-    AllowedPattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    ConstraintDescription: 'Must be a valid email address'
+    Default: AppUser
+    Description: 'Username for the initial Cognito user'
+    AllowedPattern: '^[a-zA-Z0-9._@+-]+$'
+    ConstraintDescription: 'Use letters, numbers, dots, underscores, at signs, plus signs, or hyphens'
 
-  AdminEmail:
+  InitialTemporaryPassword:
     Type: String
-    Description: 'Admin email address for SES verification (for sending reports). Must be a valid email address'
-    AllowedPattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    ConstraintDescription: 'Must be a valid email address'
+    NoEcho: true
+    MinLength: 8
+    Description: 'Temporary password for the initial Cognito user. Must satisfy the user pool password policy.'
+    AllowedPattern: '^(?=.*[a-z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).{8,}$'
+    ConstraintDescription: 'Must be at least 8 characters and include lowercase, number, and symbol characters'
 
   BucketName:
     Type: String
@@ -46,41 +49,15 @@ Resources:
       UsernameAttributes: []
       UsernameConfiguration:
         CaseSensitive: false
-      AliasAttributes:
-        - email
       Policies:
         PasswordPolicy:
           MinimumLength: 8
           RequireLowercase: true
           RequireNumbers: true
           RequireSymbols: true
-          RequireUppercase: true
-      Schema:
-        - Name: email
-          AttributeDataType: String
-          Mutable: true
-          Required: false
+          RequireUppercase: false
       AdminCreateUserConfig:
         AllowAdminCreateUserOnly: true
-        InviteMessageTemplate:
-          EmailMessage: |
-            <html>
-            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-              <h2 style="color: #1e40af;">Welcome to Evidence Collector! 🎯</h2>
-              <p>Your account has been created successfully. Here are your login credentials:</p>
-              <p style="margin-left: 20px;">
-                Username → {username}<br>
-                Temporary Password → {####}
-              </p>
-              <p><em>For security, you'll be prompted to create a new password when you first sign in.</em></p>
-              <p>Thank you for choosing our solution!</p>
-            </body>
-            </html>
-          EmailSubject: "Welcome to Evidence Collector - Your Account Details"
-      AutoVerifiedAttributes:
-        - email
-      EmailConfiguration:
-        EmailSendingAccount: COGNITO_DEFAULT
       UserPoolAddOns:
         AdvancedSecurityMode: ENFORCED
       UserPoolTags:
@@ -97,19 +74,82 @@ Resources:
     DependsOn: AppUserGroup
     Properties:
       UserPoolId: !Ref CognitoUserPool
-      Username: AppUser
-      UserAttributes:
-        - Name: email
-          Value: !Ref UserEmail
-      DesiredDeliveryMediums:
-        - EMAIL
+      Username: !Ref InitialUsername
+      MessageAction: SUPPRESS
+
+  InitialUserPasswordManagedPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - cognito-idp:AdminSetUserPassword
+            Resource:
+              - !GetAtt CognitoUserPool.Arn
+
+  InitialUserPasswordRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - !Ref InitialUserPasswordManagedPolicy
+
+  InitialUserPasswordFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt InitialUserPasswordRole.Arn
+      Timeout: 60
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+
+          cognito = boto3.client('cognito-idp')
+
+          def handler(event, context):
+              try:
+                  request_type = event['RequestType']
+                  properties = event['ResourceProperties']
+
+                  if request_type in ['Create', 'Update']:
+                      cognito.admin_set_user_password(
+                          UserPoolId=properties['UserPoolId'],
+                          Username=properties['Username'],
+                          Password=properties['Password'],
+                          Permanent=False
+                      )
+
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+              except Exception as e:
+                  print(f"Error setting initial user password: {str(e)}")
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {'Error': str(e)})
+
+  InitialUserPassword:
+    Type: Custom::InitialUserPassword
+    DependsOn: AppUser
+    Properties:
+      ServiceToken: !GetAtt InitialUserPasswordFunction.Arn
+      UserPoolId: !Ref CognitoUserPool
+      Username: !Ref InitialUsername
+      Password: !Ref InitialTemporaryPassword
 
   UserGroupAttachment:
     Type: AWS::Cognito::UserPoolUserToGroupAttachment
     DependsOn: AppUser
     Properties:
       GroupName: !Ref AppUserGroup
-      Username: AppUser
+      Username: !Ref InitialUsername
       UserPoolId: !Ref CognitoUserPool
 
   AppClient:
@@ -134,7 +174,6 @@ Resources:
         - code
         - implicit
       AllowedOAuthScopes:
-        - email
         - openid
         - profile
       AllowedOAuthFlowsUserPoolClient: true
@@ -253,12 +292,6 @@ Resources:
                 'bedrock:InferenceProfileArn': !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/global.amazon.nova-2-lite-v1:0'
           - Effect: Allow
             Action:
-              - ses:SendEmail
-              - ses:SendRawEmail
-            Resource:
-              - !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/*'
-          - Effect: Allow
-            Action:
               - s3:PutObject
               - s3:GetObject
               - s3:DeleteObject
@@ -374,12 +407,6 @@ Resources:
               - !Sub 'arn:aws:s3:::${EvidenceBucket}/config/workflows/*'
               - !Sub 'arn:aws:s3:::${EvidenceBucket}/chat-logs/*'
               - !Sub 'arn:aws:s3:::${EvidenceBucket}/reports/*'
-          - Effect: Allow
-            Action:
-              - ses:VerifyEmailIdentity
-              - ses:GetIdentityVerificationAttributes
-            Resource:
-              - !Sub 'arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/*'
           - Effect: Allow
             Action:
               - sqs:SendMessage
@@ -612,18 +639,6 @@ Resources:
                               ContentType='text/plain'
                           )
                       
-                      # Send SES verification email
-                      admin_email = properties.get('AdminEmail')
-                      region = properties.get('Region', 'us-east-1')
-                      if admin_email:
-                          ses = boto3.client('ses', region_name=region)
-                          try:
-                              ses.verify_email_identity(EmailAddress=admin_email)
-                              print(f"SES verification email sent to {admin_email}")
-                          except Exception as ses_error:
-                              print(f"Failed to send SES verification: {ses_error}")
-                              # Don't fail the stack if SES verification fails
-                      
                       print(f"Successfully uploaded prompts and created folder structure in {bucket}")
                       cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
                       
@@ -648,8 +663,6 @@ Resources:
     Properties:
       ServiceToken: !GetAtt PromptUploaderFunction.Arn
       BucketName: !Ref EvidenceBucket
-      AdminEmail: !Ref AdminEmail
-      Region: !Ref AWS::Region
       Version: "1.1"  # Increment to force update
 
   # ========================================
@@ -797,7 +810,7 @@ Outputs:
   # User Information
   CreatedUsername:
     Description: Created Cognito username
-    Value: AppUser
+    Value: !Ref InitialUsername
 
   # Storage Outputs
   EvidenceBucketName:
@@ -817,7 +830,7 @@ Outputs:
   SetupInstructions:
     Description: Next Steps
     Value: !Sub 
-      - 'Check email for temporary password, configure ${Browser} with output values, login with AppUser'
+      - 'Configure ${Browser} with output values, then log in with the initial username and temporary password supplied during stack creation'
       - Browser: !If
         - IsBoth
         - 'Chrome and/or Firefox extension'

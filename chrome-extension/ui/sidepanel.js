@@ -1,6 +1,5 @@
 // Import all required modules so webpack bundles them
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
-import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
 import CognitoAuth from './auth-sdk.js';
 import '../core/tools.js';
 import '../core/workflow-manager.js';
@@ -29,7 +28,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   let s3Manager = null; // Initialize after S3Manager class is defined
   let currentUsername = '';
   
-  // Track active workflow report for EmailReport tool - expose globally
+  // Track active workflow report for download actions
   window.activeWorkflowReport = null;
 
   // Function to save chat after each message
@@ -297,6 +296,91 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
   }
 
+  function showReportDownloadActions(report) {
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'message assistant';
+
+    const title = document.createElement('div');
+    title.textContent = 'Report ready in S3';
+    title.style.fontWeight = '700';
+    title.style.marginBottom = '8px';
+
+    const location = document.createElement('div');
+    location.textContent = report.s3Url;
+    location.style.wordBreak = 'break-all';
+    location.style.color = '#374151';
+    location.style.fontSize = '12px';
+    location.style.lineHeight = '1.4';
+    location.style.marginBottom = '12px';
+
+    const buttons = document.createElement('div');
+    buttons.style.display = 'flex';
+    buttons.style.flexWrap = 'wrap';
+    buttons.style.gap = '8px';
+
+    const downloadButton = document.createElement('button');
+    downloadButton.textContent = 'Download HTML';
+    downloadButton.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+    downloadButton.style.flex = '1';
+    downloadButton.style.minWidth = '140px';
+
+    const openButton = document.createElement('button');
+    openButton.textContent = 'Open in S3';
+    openButton.style.background = 'linear-gradient(135deg, #3b82f6, #1d4ed8)';
+    openButton.style.flex = '1';
+    openButton.style.minWidth = '120px';
+
+    downloadButton.addEventListener('click', async () => {
+      await downloadReportFromS3(report, downloadButton);
+    });
+
+    openButton.addEventListener('click', () => {
+      window.open(report.consoleUrl, '_blank');
+    });
+
+    buttons.appendChild(downloadButton);
+    buttons.appendChild(openButton);
+    actionsDiv.appendChild(title);
+    actionsDiv.appendChild(location);
+    actionsDiv.appendChild(buttons);
+    chatArea.appendChild(actionsDiv);
+    chatArea.scrollTop = chatArea.scrollHeight;
+  }
+
+  async function downloadReportFromS3(report, button) {
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Downloading...';
+
+    try {
+      const s3Manager = new S3Manager();
+      const downloadedReport = await s3Manager.downloadReport(report);
+      saveHtmlFile(
+        downloadedReport.content,
+        downloadedReport.filename,
+        downloadedReport.contentType
+      );
+      addMessage(`✅ Downloaded report: ${downloadedReport.filename}`, 'assistant');
+    } catch (error) {
+      addMessage(`❌ Report download failed: ${error.message}`, 'assistant');
+    } finally {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
+
+  function saveHtmlFile(content, filename, contentType = 'text/html') {
+    const blob = new Blob([content], { type: `${contentType};charset=utf-8` });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.download = filename || `evidence-report-${Date.now()}.html`;
+    link.href = url;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   // Generate workflow report with Nova summary
   async function generateWorkflowReport(workflowName, logData) {
     addMessage('🤖 Analyzing workflow execution...', 'assistant');
@@ -383,16 +467,20 @@ ${idx + 1}. ${step.action.toUpperCase()}: ${step.description}
     // Save to S3
     addMessage('💾 Saving report to S3...', 'assistant');
     const s3Manager = new S3Manager();
-    const reportUrl = await s3Manager.saveReport(reportHTML, workflowName);
+    const report = await s3Manager.saveReport(reportHTML, workflowName);
     
-    addMessage(`✅ Report generated successfully!\n📄 Saved to: ${reportUrl}`, 'assistant');
+    addMessage(`✅ Report generated successfully!\n📄 Saved to: ${report.s3Url}`, 'assistant');
     
-    // Store as active report for EmailReport tool - save to storage
+    // Store as active report for download actions
     window.activeWorkflowReport = {
       workflowName: logData.workflowName,
       logData: logData,
       reportHTML: reportHTML,
-      reportUrl: reportUrl,
+      reportUrl: report.s3Url,
+      reportKey: report.key,
+      reportFilename: report.filename,
+      reportConsoleUrl: report.consoleUrl,
+      report,
       timestamp: Date.now()
     };
     
@@ -401,100 +489,7 @@ ${idx + 1}. ${step.action.toUpperCase()}: ${step.description}
       activeWorkflowReport: window.activeWorkflowReport 
     });
     
-    // Automatically send email
-    await window.sendReportEmail(reportHTML, workflowName, reportUrl);
-  }
-
-  // Send report via email using SES
-  // Send report via email using SES - expose globally for EmailReport tool
-  window.sendReportEmail = async function(reportHTML, workflowName, reportUrl, recipientEmail = null) {
-    addMessage('📧 Sending email...', 'assistant');
-    
-    // Get user email from Cognito
-    const session = await chrome.storage.session.get(['credentials', 'userEmail', 'accessToken']);
-    const config = await chrome.storage.local.get(['cognitoConfig']);
-    
-    if (!session.credentials || !config.cognitoConfig) {
-      throw new Error('Not authenticated');
-    }
-    
-    // Get user email from Cognito user attributes
-    let userEmail = session.userEmail;
-    if (!userEmail && session.accessToken) {
-      // Fetch from Cognito if not in session
-      try {
-        const userUrl = `https://cognito-idp.${config.cognitoConfig.region}.amazonaws.com/`;
-        const getUserRequest = { AccessToken: session.accessToken };
-        
-        console.log('Fetching user email from Cognito...');
-        const response = await fetch(userUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-amz-json-1.1',
-            'X-Amz-Target': 'AWSCognitoIdentityProviderService.GetUser'
-          },
-          body: JSON.stringify(getUserRequest)
-        });
-        
-        const userData = await response.json();
-        console.log('Cognito GetUser response:', userData);
-        
-        const emailAttr = userData.UserAttributes?.find(attr => attr.Name === 'email');
-        userEmail = emailAttr?.Value;
-        
-        // Cache it
-        if (userEmail) {
-          await chrome.storage.session.set({ userEmail });
-        }
-      } catch (error) {
-        console.error('Failed to get user email:', error);
-        addMessage(`⚠️ Could not fetch email from Cognito: ${error.message}`, 'assistant');
-      }
-    }
-    
-    // Use provided recipient or default to user's email
-    const finalRecipient = recipientEmail || userEmail;
-    
-    if (!finalRecipient) {
-      throw new Error('Could not retrieve user email from Cognito. Please ensure your Cognito user has an email attribute.');
-    }
-    
-    // Prepare email
-    const emailSubject = `Evidence Report: ${workflowName}`;
-    const emailBody = reportHTML;
-    
-    // Send via SES using AWS SDK v3
-    const sesClient = new SESClient({
-      region: config.cognitoConfig.region,
-      credentials: {
-        accessKeyId: session.credentials.AccessKeyId,
-        secretAccessKey: session.credentials.SecretKey,
-        sessionToken: session.credentials.SessionToken
-      }
-    });
-    
-    const command = new SendEmailCommand({
-      Source: userEmail || finalRecipient,
-      Destination: {
-        ToAddresses: [finalRecipient]
-      },
-      Message: {
-        Subject: {
-          Data: emailSubject,
-          Charset: 'UTF-8'
-        },
-        Body: {
-          Html: {
-            Data: emailBody,
-            Charset: 'UTF-8'
-          }
-        }
-      }
-    });
-    
-    await sesClient.send(command);
-    
-    addMessage(`✅ Report emailed to: ${finalRecipient}`, 'assistant');
+    showReportDownloadActions(report);
   }
 
   // Generate HTML report template
@@ -1679,61 +1674,6 @@ ${idx + 1}. ${step.action.toUpperCase()}: ${step.description}
       }
     }
   }
-  
-  // Message handler for EmailReport tool
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'emailReport') {
-      // Handle async operation properly
-      (async () => {
-        try {
-          const { recipientEmail, workflowName, subject } = request;
-          
-          // Find the report to send
-          let reportToSend = activeWorkflowReport;
-          
-          // If specific workflow name provided, try to find it
-          if (workflowName && activeWorkflowReport?.workflowName !== workflowName) {
-            return {
-              success: false,
-              error: `Workflow "${workflowName}" not found. Only the most recent workflow report is available.`
-            };
-          }
-          
-          // Check if we have an active report
-          if (!reportToSend) {
-            return {
-              success: false,
-              error: 'No workflow report available. Please run a workflow first.'
-            };
-          }
-          
-          // Send the email
-          await sendReportEmail(
-            reportToSend.reportHTML,
-            reportToSend.workflowName,
-            reportToSend.reportUrl,
-            recipientEmail
-          );
-          
-          return {
-            success: true,
-            message: `Report for "${reportToSend.workflowName}" emailed to ${recipientEmail}`
-          };
-        } catch (error) {
-          return {
-            success: false,
-            error: error.message
-          };
-        }
-      })().then(sendResponse).catch(err => {
-        sendResponse({
-          success: false,
-          error: err.message
-        });
-      });
-      return true; // Keep channel open for async response
-    }
-  });
   
   // Initialize test mode on page load
   console.log('Sidepanel.js loaded, initializing test mode...');

@@ -13,9 +13,9 @@ You will learn how we architected this solution, integrated Amazon Nova 2 Lite f
 
 We chose browser automation combined with AI for several key reasons: it works with any web application without requiring API access, it captures visual evidence that auditors need, and it can adapt to UI changes through intelligent automation.
 
-The solution uses a browser extension for Chrome and Firefox as the primary interface, providing three main capabilities: an evidence collector, an AI-powered workflow designer, and report delivery. The evidence collector executes pre-defined workflows, navigating through web applications and capturing timestamped screenshots in an Amazon S3 bucket. The AI-powered workflow designer communicates with Amazon Bedrock using the Amazon Nova 2 Lite model. When you upload a compliance text document, Amazon Nova 2 Lite analyzes it and generates executable workflow JSON that the extension can run. For report delivery, after a workflow completes, [Amazon Simple Email Service (Amazon SES)](https://aws.amazon.com/ses/) generates and sends a compliance report to a specified email address.
+The solution uses a browser extension for Chrome and Firefox as the primary interface, providing three main capabilities: an evidence collector, an AI-powered workflow designer, and S3-backed report generation. The evidence collector executes pre-defined workflows, navigating through web applications and capturing timestamped screenshots in an Amazon S3 bucket. The AI-powered workflow designer communicates with Amazon Bedrock using the Amazon Nova 2 Lite model. When you upload a compliance text document, Amazon Nova 2 Lite analyzes it and generates executable workflow JSON that the extension can run. For report delivery, after a workflow completes, the extension saves an HTML compliance report to Amazon S3 and provides a download button in the side panel.
 
-On the infrastructure side, two [AWS Lambda](https://aws.amazon.com/lambda/) functions support the solution: one uploads initial system prompts to the S3 bucket during deployment, and another handles bucket cleanup. For authentication and authorization, the extension uses [Amazon Cognito](https://aws.amazon.com/iam/) to manage user sign-in. Cognito works with [AWS Security Token Service (AWS STS)](https://docs.aws.amazon.com/STS/latest/APIReference/welcome.html) and [AWS Identity and Access Management (IAM)](https://aws.amazon.com/iam/) to provide the extension with scoped, least-privilege credentials for accessing Amazon Bedrock, Amazon S3, and Amazon SES. AWS encrypts evidence at rest, organizes it by date and workflow, and includes comprehensive audit logs.
+On the infrastructure side, two [AWS Lambda](https://aws.amazon.com/lambda/) functions support the solution: one uploads initial system prompts to the S3 bucket during deployment, and another handles bucket cleanup. For authentication and authorization, the extension uses [Amazon Cognito](https://aws.amazon.com/iam/) to manage user sign-in. Cognito works with [AWS Security Token Service (AWS STS)](https://docs.aws.amazon.com/STS/latest/APIReference/welcome.html) and [AWS Identity and Access Management (IAM)](https://aws.amazon.com/iam/) to provide the extension with scoped, least-privilege credentials for accessing Amazon Bedrock and Amazon S3. AWS encrypts evidence at rest, organizes it by date and workflow, and includes comprehensive audit logs.
 
 <!-- TODO: Replace with actual image -->
 ![Evidence Collector High Level Diagram](images/0.EvidenceCollectorHighLevelDiagram.png)
@@ -46,7 +46,7 @@ https://github.com/user-attachments/assets/5d80d472-7332-4957-b7fa-a869d12c8937
 
 https://github.com/user-attachments/assets/5d80d472-7332-4957-b7fa-a869d12c8937
 
-- **Report generation mode** (used after workflow completion): Analyzes captured screenshots after workflow completion to generate a comprehensive compliance report that includes evidence summaries, findings, and compliance status assessments. Amazon SES then emails the completed report to your specified email address.
+- **Report generation mode** (used after workflow completion): Analyzes captured screenshots after workflow completion to generate a comprehensive compliance report that includes evidence summaries, findings, and compliance status assessments. The generated HTML report is saved to Amazon S3 and can be downloaded from the side panel.
 
 ### C. Workflow Engine
 
@@ -159,7 +159,7 @@ The workflow designer includes a test mode where you can execute the generated w
 Before you begin, verify that you have:
 
 - An active [AWS account](https://signin.aws.amazon.com/signin?redirect_uri=https%3A%2F%2Fportal.aws.amazon.com%2Fbilling%2Fsignup%2Fresume&client_id=signup) with appropriate permissions
-- Access to Amazon Bedrock, S3, SES, Cognito, [AWS Identity and Access Management (IAM)](https://aws.amazon.com/iam/)
+- Access to Amazon Bedrock, S3, Cognito, [AWS Identity and Access Management (IAM)](https://aws.amazon.com/iam/)
 - [AWS Command Line Interface (AWS CLI)](https://aws.amazon.com/cli/) (v2.x) configured with credentials
 - [Chrome](https://www.google.com/chrome) (version 88 or later) or [Firefox](https://www.firefox.com/) (version 147.0.2 or later) browser
 
@@ -172,7 +172,7 @@ git clone https://github.com/aws-samples/sample-ai-powered-compliance-evidence-c
 cd sample-ai-powered-compliance-evidence-collector
 ```
 
-We provide a unified [AWS CloudFormation](https://aws.amazon.com/cloudformation/) template that deploys the complete AWS infrastructure with support for Chrome, Firefox, or both browsers. You must update `AdminEmail` with the email address that Amazon SES uses to send the generated reports and `UserEmail` with the email address that receives both the temporary Amazon Cognito password and the compliance report.
+We provide a unified [AWS CloudFormation](https://aws.amazon.com/cloudformation/) template that deploys the complete AWS infrastructure with support for Chrome, Firefox, or both browsers. The template creates an initial Cognito user with the username and temporary password you provide during stack creation; it does not require an email address.
 
 You can use the `BrowserType` parameter to select which browser extensions to support:
 
@@ -186,8 +186,8 @@ aws cloudformation create-stack \
   --template-body file://deployment/evidence-collector-cfn.yaml \
   --parameters \
     ParameterKey=BrowserType,ParameterValue=Both \
-    ParameterKey=AdminEmail,ParameterValue=admin@example.com \
-    ParameterKey=UserEmail,ParameterValue=user@example.com \
+    ParameterKey=InitialUsername,ParameterValue=AppUser \
+    ParameterKey=InitialTemporaryPassword,ParameterValue='ReplaceMe123!' \
     ParameterKey=BucketName,ParameterValue=my-evidence-bucket \
   --capabilities CAPABILITY_IAM \
   --region us-east-1
@@ -198,13 +198,14 @@ The template creates:
 - Amazon Cognito User Pool with strong password policy
 - Amazon Cognito Identity Pool for AWS service access with role-based permissions
 - S3 Bucket with encryption, versioning, and public access blocking
-- IAM Roles with least-privilege policies for Amazon Bedrock, S3, and SES access
+- IAM Roles with least-privilege policies for Amazon Bedrock and S3 access
 - AWS Lambda function that uploads initial system prompts to S3
-- Initial User with email invitation containing temporary password
+- Initial User with supplied temporary password
 
 After deployment, the CloudFormation outputs provide values needed to configure the browser extension:
 
 - `EvidenceBucketName`
+- `CreatedUsername`
 - `IdentityPoolId`
 - `Region`
 - `UserPoolClientId`
@@ -264,7 +265,7 @@ The extension is now installed temporarily and will remain active until you rest
 <!-- TODO: Replace with actual image -->
 ![Evidence Collector Firefox Extension](images/6.EvidenceCollector-Firefox-Extension.png)
 
-After you have the configuration in place, save it and log in with the username and temporary password that was emailed to you. At first login, you will be asked to change the password for the user.
+After you have the configuration in place, save it and log in with the initial username and temporary password supplied during stack creation. At first login, you will be asked to change the password for the user.
 
 ## Solution demo
 
@@ -275,17 +276,12 @@ Let's walk through a typical audit workflow. In our example, we use Chrome as th
 3. **Authentication:** The workflow pauses with a "Please log in to AWS Console" message and **Continue Workflow** button. We are already logged in, so we can select continue.
 4. **Automated evidence collection:** The workflow automatically captures screenshots of specific areas as instructed by the workflow.
 5. **Evidence organization:** The extension uploads screenshots to S3 with timestamps and organizes them `/evidence/xxxx/xx/xx/aws-iam-access-review/`. Each file name includes the timestamp, domain, and description.
-6. **Workflow completion:** The chat displays a `Generate Evidence Report` button after the workflow is completed. Selecting it creates an HTML report with screenshots, timestamps, and workflow details and sends it through email.
+6. **Workflow completion:** The chat displays a `Generate Evidence Report` button after the workflow is completed. Selecting it creates an HTML report with screenshots, timestamps, and workflow details, saves it to S3, and displays buttons to download the report or open the S3 object.
 
 The process is consistent as the same evidence is collected every time, with the same naming conventions and organization. The following video shows the workflow in process.
 
 <!-- TODO: Replace with actual video/gif -->
 ![Evidence Collector Workflow Demo](images/7.EvidenceCollectorWorkflowDemo.gif)
-
-The following video shows the email that is generated and sent to the user.
-
-<!-- TODO: Replace with actual video/gif -->
-![Evidence Email Report](images/8.EvidenceEmailReport.gif)
 
 ## Automated workflow execution
 
