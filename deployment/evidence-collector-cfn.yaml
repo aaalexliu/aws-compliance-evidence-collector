@@ -14,11 +14,20 @@ Parameters:
     AllowedValues: [dev, staging, prod]
     Description: Environment name
 
-  UserEmail:
+  InitialUsername:
     Type: String
-    Description: 'Email address for the initial user. Must be a valid email address'
-    AllowedPattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    ConstraintDescription: 'Must be a valid email address'
+    Default: AppUser
+    Description: 'Username for the initial Cognito user'
+    AllowedPattern: '^[a-zA-Z0-9._@+-]+$'
+    ConstraintDescription: 'Use letters, numbers, dots, underscores, at signs, plus signs, or hyphens'
+
+  InitialTemporaryPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    Description: 'Temporary password for the initial Cognito user. Must satisfy the user pool password policy.'
+    AllowedPattern: '^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).{8,}$'
+    ConstraintDescription: 'Must be at least 8 characters and include uppercase, lowercase, number, and symbol characters'
 
   BucketName:
     Type: String
@@ -40,8 +49,6 @@ Resources:
       UsernameAttributes: []
       UsernameConfiguration:
         CaseSensitive: false
-      AliasAttributes:
-        - email
       Policies:
         PasswordPolicy:
           MinimumLength: 8
@@ -49,32 +56,8 @@ Resources:
           RequireNumbers: true
           RequireSymbols: true
           RequireUppercase: true
-      Schema:
-        - Name: email
-          AttributeDataType: String
-          Mutable: true
-          Required: false
       AdminCreateUserConfig:
         AllowAdminCreateUserOnly: true
-        InviteMessageTemplate:
-          EmailMessage: |
-            <html>
-            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-              <h2 style="color: #1e40af;">Welcome to Evidence Collector! 🎯</h2>
-              <p>Your account has been created successfully. Here are your login credentials:</p>
-              <p style="margin-left: 20px;">
-                Username → {username}<br>
-                Temporary Password → {####}
-              </p>
-              <p><em>For security, you'll be prompted to create a new password when you first sign in.</em></p>
-              <p>Thank you for choosing our solution!</p>
-            </body>
-            </html>
-          EmailSubject: "Welcome to Evidence Collector - Your Account Details"
-      AutoVerifiedAttributes:
-        - email
-      EmailConfiguration:
-        EmailSendingAccount: COGNITO_DEFAULT
       UserPoolAddOns:
         AdvancedSecurityMode: ENFORCED
       UserPoolTags:
@@ -91,19 +74,16 @@ Resources:
     DependsOn: AppUserGroup
     Properties:
       UserPoolId: !Ref CognitoUserPool
-      Username: AppUser
-      UserAttributes:
-        - Name: email
-          Value: !Ref UserEmail
-      DesiredDeliveryMediums:
-        - EMAIL
+      Username: !Ref InitialUsername
+      TemporaryPassword: !Ref InitialTemporaryPassword
+      MessageAction: SUPPRESS
 
   UserGroupAttachment:
     Type: AWS::Cognito::UserPoolUserToGroupAttachment
     DependsOn: AppUser
     Properties:
       GroupName: !Ref AppUserGroup
-      Username: AppUser
+      Username: !Ref InitialUsername
       UserPoolId: !Ref CognitoUserPool
 
   AppClient:
@@ -128,7 +108,6 @@ Resources:
         - code
         - implicit
       AllowedOAuthScopes:
-        - email
         - openid
         - profile
       AllowedOAuthFlowsUserPoolClient: true
@@ -765,7 +744,7 @@ Outputs:
   # User Information
   CreatedUsername:
     Description: Created Cognito username
-    Value: AppUser
+    Value: !Ref InitialUsername
 
   # Storage Outputs
   EvidenceBucketName:
@@ -785,7 +764,7 @@ Outputs:
   SetupInstructions:
     Description: Next Steps
     Value: !Sub 
-      - 'Check email for temporary password, configure ${Browser} with output values, login with AppUser'
+      - 'Configure ${Browser} with output values, then log in with the initial username and temporary password supplied during stack creation'
       - Browser: !If
         - IsBoth
         - 'Chrome and/or Firefox extension'

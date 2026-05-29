@@ -60,6 +60,11 @@ cd ../deployment
 aws cloudformation create-stack \
   --stack-name compliance-evidence-collector \
   --template-body file://evidence-collector-cfn.yaml \
+  --parameters \
+    ParameterKey=BrowserType,ParameterValue=Firefox \
+    ParameterKey=InitialUsername,ParameterValue=AppUser \
+    ParameterKey=InitialTemporaryPassword,ParameterValue='ReplaceMe123!' \
+    ParameterKey=BucketName,ParameterValue=my-evidence-bucket \
   --capabilities CAPABILITY_IAM
 ```
 
@@ -89,16 +94,8 @@ This creates:
      - Region (e.g., us-east-1)
    - Click "Save Configuration"
 
-3. **Create User:**
-   ```bash
-   aws cognito-idp admin-create-user \
-     --user-pool-id <YOUR_USER_POOL_ID> \
-     --username <USERNAME> \
-     --temporary-password <TEMP_PASSWORD>
-   ```
-
-4. **Sign In:**
-   - Enter username and temporary password
+3. **Sign In:**
+   - Enter the initial username and temporary password supplied during stack creation
    - Create a permanent password when prompted
 
 ## Usage

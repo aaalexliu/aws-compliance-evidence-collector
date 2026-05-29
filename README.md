@@ -172,7 +172,7 @@ git clone https://github.com/aws-samples/sample-ai-powered-compliance-evidence-c
 cd sample-ai-powered-compliance-evidence-collector
 ```
 
-We provide a unified [AWS CloudFormation](https://aws.amazon.com/cloudformation/) template that deploys the complete AWS infrastructure with support for Chrome, Firefox, or both browsers. You must update `UserEmail` with the email address that receives the temporary Amazon Cognito password.
+We provide a unified [AWS CloudFormation](https://aws.amazon.com/cloudformation/) template that deploys the complete AWS infrastructure with support for Chrome, Firefox, or both browsers. The template creates an initial Cognito user with the username and temporary password you provide during stack creation; it does not require an email address.
 
 You can use the `BrowserType` parameter to select which browser extensions to support:
 
@@ -186,7 +186,8 @@ aws cloudformation create-stack \
   --template-body file://deployment/evidence-collector-cfn.yaml \
   --parameters \
     ParameterKey=BrowserType,ParameterValue=Both \
-    ParameterKey=UserEmail,ParameterValue=user@example.com \
+    ParameterKey=InitialUsername,ParameterValue=AppUser \
+    ParameterKey=InitialTemporaryPassword,ParameterValue='ReplaceMe123!' \
     ParameterKey=BucketName,ParameterValue=my-evidence-bucket \
   --capabilities CAPABILITY_IAM \
   --region us-east-1
@@ -199,11 +200,12 @@ The template creates:
 - S3 Bucket with encryption, versioning, and public access blocking
 - IAM Roles with least-privilege policies for Amazon Bedrock and S3 access
 - AWS Lambda function that uploads initial system prompts to S3
-- Initial User with email invitation containing temporary password
+- Initial User with supplied temporary password
 
 After deployment, the CloudFormation outputs provide values needed to configure the browser extension:
 
 - `EvidenceBucketName`
+- `CreatedUsername`
 - `IdentityPoolId`
 - `Region`
 - `UserPoolClientId`
@@ -263,7 +265,7 @@ The extension is now installed temporarily and will remain active until you rest
 <!-- TODO: Replace with actual image -->
 ![Evidence Collector Firefox Extension](images/6.EvidenceCollector-Firefox-Extension.png)
 
-After you have the configuration in place, save it and log in with the username and temporary password that was emailed to you. At first login, you will be asked to change the password for the user.
+After you have the configuration in place, save it and log in with the initial username and temporary password supplied during stack creation. At first login, you will be asked to change the password for the user.
 
 ## Solution demo
 
